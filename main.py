@@ -18,7 +18,13 @@ from config import (
     USE_CLASS_WEIGHTS,
     SEED
 )
+
 set_seed(SEED)
+
+os.makedirs(
+    RESULTS_DIR,
+    exist_ok=True
+)
 
 from dataset import load_galaxy_dataset
 from evaluate import (

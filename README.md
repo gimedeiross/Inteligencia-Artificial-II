@@ -1,14 +1,14 @@
-# Galaxy Zoo — Comparação de Arquiteturas
+# Galaxy Zoo — Comparação de Arquiteturas CNN
 
-Projeto da disciplina de **Inteligência Artificial II** para treinamento e comparação de arquiteturas de Redes Neurais Convolucionais aplicadas à classificação de imagens de galáxias.
+Projeto da disciplina de **Inteligência Artificial II** para treinamento, avaliação e comparação de arquiteturas de Redes Neurais Convolucionais aplicadas à classificação de galáxias.
 
-As arquiteturas avaliadas são:
+O projeto utiliza o dataset **`mrJordi0/galaxy-zoo-dataset`**, disponibilizado pelo Hugging Face, e compara três arquiteturas:
 
 * **ResNet18**
 * **GoogLeNet**
 * **MobileNetV3 Small**
 
-O projeto utiliza **PyTorch**, **Torchvision** e **Hugging Face Datasets**, com transferência de aprendizado a partir de pesos pré-treinados no ImageNet.
+O objetivo é realizar os experimentos sob condições controladas e coletar métricas que possam ser utilizadas na elaboração do artigo científico.
 
 ---
 
@@ -19,16 +19,16 @@ O projeto utiliza **PyTorch**, **Torchvision** e **Hugging Face Datasets**, com 
 * Torchvision
 * Hugging Face Datasets
 * NumPy
+* Pillow
 * Scikit-learn
 * Matplotlib
-* Pillow
 
 ---
 
 ## Estrutura do projeto
 
 ```text
-galaxy-zoo/
+IA2/
 │
 ├── models/
 │   ├── resnet.py
@@ -39,8 +39,9 @@ galaxy-zoo/
 │   ├── dataset.py
 │   ├── train.py
 │   ├── evaluate.py
+│   ├── utils.py
 │   ├── inspect_dataset.py
-│   └── utils.py
+│   └── compare_results.py
 │
 ├── results/
 │   ├── resnet/
@@ -50,10 +51,11 @@ galaxy-zoo/
 ├── config.py
 ├── main.py
 ├── requirements.txt
+├── .gitignore
 └── README.md
 ```
 
-A pasta `results/` **não precisa ser criada manualmente**. O código cria automaticamente os diretórios necessários durante a execução.
+A pasta `results/` **não precisa ser criada manualmente**. O código cria os diretórios necessários automaticamente durante a execução.
 
 ---
 
@@ -63,30 +65,30 @@ A pasta `results/` **não precisa ser criada manualmente**. O código cria autom
 
 ```bash
 git clone <URL_DO_REPOSITORIO>
-cd galaxy-zoo
+cd IA2
 ```
 
 ## 2. Criar o ambiente virtual
-
-Linux:
 
 ```bash
 python3 -m venv .venv
 ```
 
-Ativar:
+## 3. Ativar o ambiente virtual
+
+### Linux
 
 ```bash
 source .venv/bin/activate
 ```
 
-Windows:
+### Windows
 
-```powershell
+```bash
 .venv\Scripts\activate
 ```
 
-## 3. Instalar as dependências
+## 4. Instalar as dependências
 
 ```bash
 pip install -r requirements.txt
@@ -102,73 +104,77 @@ Antes de iniciar os experimentos, é recomendado verificar se o PyTorch está re
 python -c "import torch; print('PyTorch:', torch.__version__); print('CUDA disponível:', torch.cuda.is_available()); print('CUDA:', torch.version.cuda); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
 ```
 
-Em uma máquina com GPU NVIDIA corretamente configurada, deve aparecer algo semelhante a:
+Em uma máquina com CUDA configurada corretamente, o resultado deverá indicar:
 
 ```text
-PyTorch: 2.x.x+cuXXX
 CUDA disponível: True
-CUDA: X.X
 GPU: NVIDIA GeForce RTX 4050 Laptop GPU
 ```
 
-Se `CUDA disponível` retornar `False`, o treinamento será executado na CPU.
+Caso `torch.cuda.is_available()` retorne `False`, o treinamento será executado na CPU.
 
 ---
 
 # Dataset
 
-O projeto utiliza o dataset:
+O projeto utiliza:
 
 ```text
 mrJordi0/galaxy-zoo-dataset
 ```
 
-O dataset é carregado automaticamente através da biblioteca **Hugging Face Datasets**.
+O dataset é carregado automaticamente através da biblioteca Hugging Face Datasets:
+
+```python
+load_dataset(DATASET_NAME)
+```
 
 Não é necessário baixar manualmente os arquivos nem adicioná-los ao repositório.
 
-Na primeira execução, os arquivos serão baixados e armazenados no cache local do Hugging Face.
+Na primeira execução, aproximadamente os arquivos do dataset serão baixados para o cache local do Hugging Face. Execuções posteriores utilizarão os arquivos armazenados em cache.
 
-O dataset atualmente possui:
+## Divisão dos dados
 
-```text
-Train:       99.808 imagens
-Validation:  24.952 imagens
-Test:        31.191 imagens
-```
-
-Total:
+O dataset utilizado já possui três divisões:
 
 ```text
-155.951 imagens
+Train:      99.808 imagens
+Validation: 24.952 imagens
+Test:       31.191 imagens
 ```
 
-As imagens possuem resolução original de aproximadamente `424 × 424` pixels e são redimensionadas para `224 × 224` durante o pré-processamento.
+O código utiliza:
+
+* `train` para treinamento;
+* `validation` para acompanhamento durante o treinamento e early stopping;
+* `test` exclusivamente para avaliação final.
 
 ---
 
 # Classes
 
-O problema possui 8 classes:
+O dataset possui oito classes:
 
-| Código | Classe                  |
-| -----: | ----------------------- |
-|      0 | Round Elliptical        |
-|      1 | In-between Elliptical   |
-|      2 | Cigar-shaped Elliptical |
-|      3 | Edge-on Spiral          |
-|      4 | Barred Spiral           |
-|      5 | Unbarred Spiral         |
-|      6 | Irregular               |
-|      7 | Merger                  |
+| ID | Classe                  |
+| -: | ----------------------- |
+|  0 | Round Elliptical        |
+|  1 | In-between Elliptical   |
+|  2 | Cigar-shaped Elliptical |
+|  3 | Edge-on Spiral          |
+|  4 | Barred Spiral           |
+|  5 | Unbarred Spiral         |
+|  6 | Irregular               |
+|  7 | Merger                  |
 
-A distribuição das classes é desbalanceada. Por isso, além da **Accuracy**, o projeto utiliza métricas como **F1 Macro**, que atribui o mesmo peso a todas as classes.
+Existe um desbalanceamento entre as classes, especialmente nas classes `Irregular` e `Merger`.
+
+Por isso, o treinamento utiliza **pesos de classe** para reduzir o impacto do desbalanceamento.
 
 ---
 
 # Inspecionando o dataset
 
-Para verificar a estrutura, quantidade de imagens e distribuição das classes:
+Antes de iniciar os experimentos, é recomendado verificar a estrutura e distribuição do dataset:
 
 ```bash
 python -m src.inspect_dataset
@@ -176,17 +182,19 @@ python -m src.inspect_dataset
 
 Esse comando apresenta:
 
-* divisões `train`, `validation` e `test`;
-* quantidade de imagens;
+* quantidade de exemplos em cada split;
 * features disponíveis;
-* resolução e formato das imagens;
-* distribuição das classes.
+* tamanho e formato das imagens;
+* distribuição das classes;
+* percentual de cada classe.
+
+Isso permite verificar se o dataset está sendo carregado corretamente antes de iniciar um treinamento longo.
 
 ---
 
-# Configuração do experimento
+# Configuração
 
-Os principais parâmetros estão centralizados em:
+Os principais parâmetros do experimento estão centralizados em:
 
 ```text
 config.py
@@ -195,8 +203,6 @@ config.py
 Exemplo:
 
 ```python
-NUM_CLASSES = 8
-
 IMAGE_SIZE = 224
 
 BATCH_SIZE = 32
@@ -211,14 +217,16 @@ NUM_WORKERS = 4
 
 PRETRAINED = True
 
+FREEZE_BACKBONE = False
+
+USE_CLASS_WEIGHTS = True
+
 EARLY_STOPPING_PATIENCE = 3
 
 SEED = 42
 ```
 
-Isso permite que os três modelos sejam treinados sob as **mesmas condições experimentais**.
-
-Não é utilizado learning rate scheduler no projeto.
+A utilização de um único arquivo de configuração garante que os três modelos sejam treinados utilizando os mesmos parâmetros experimentais.
 
 ---
 
@@ -226,59 +234,71 @@ Não é utilizado learning rate scheduler no projeto.
 
 ## ResNet18
 
-Implementada em:
+Implementada utilizando a versão disponibilizada pelo Torchvision:
 
 ```text
-models/resnet.py
+ResNet18
 ```
 
-Utiliza pesos pré-treinados e substitui a camada final para realizar a classificação das 8 classes.
+O modelo utiliza pesos pré-treinados quando:
+
+```python
+PRETRAINED = True
+```
+
+A camada final é substituída para produzir oito classes.
+
+---
 
 ## GoogLeNet
 
-Implementada em:
+Implementada utilizando:
 
 ```text
-models/googlenet.py
+GoogLeNet
 ```
 
-Utiliza pesos pré-treinados e possui as camadas auxiliares (`aux1` e `aux2`) configuradas para o problema de 8 classes.
+O modelo utiliza pesos pré-treinados e possui classificadores auxiliares (`aux1` e `aux2`), que também são adaptados para as oito classes do dataset.
+
+Durante o treinamento, a saída principal é utilizada para o cálculo da loss.
+
+---
 
 ## MobileNetV3 Small
 
-Implementada em:
+Implementada utilizando:
 
 ```text
-models/mobilenet.py
+MobileNetV3 Small
 ```
 
-Utiliza a variante **MobileNetV3 Small**, também com pesos pré-treinados.
+A camada classificadora final é substituída para produzir oito classes.
 
-A escolha permite comparar uma arquitetura mais leve e eficiente computacionalmente com arquiteturas mais tradicionais.
+A MobileNetV3 Small foi escolhida por possuir uma arquitetura consideravelmente mais leve, permitindo comparar não apenas desempenho de classificação, mas também custo computacional e quantidade de parâmetros.
 
 ---
 
 # Treinamento
 
-## Treinar somente a ResNet18
+## ResNet18
 
 ```bash
 python main.py --model resnet
 ```
 
-## Treinar somente a GoogLeNet
+## GoogLeNet
 
 ```bash
 python main.py --model googlenet
 ```
 
-## Treinar somente a MobileNetV3 Small
+## MobileNetV3
 
 ```bash
 python main.py --model mobilenet
 ```
 
-## Treinar as três arquiteturas
+## Treinar os três modelos
 
 Para executar o experimento completo:
 
@@ -286,86 +306,67 @@ Para executar o experimento completo:
 python main.py --model all
 ```
 
-O código executará:
+Os modelos serão treinados sequencialmente:
 
 ```text
 ResNet18
-   ↓
+    ↓
 GoogLeNet
-   ↓
+    ↓
 MobileNetV3 Small
 ```
 
-Cada modelo será:
-
-1. criado;
-2. treinado;
-3. avaliado no conjunto de teste;
-4. terá suas métricas salvas;
-5. terá seus gráficos gerados;
-6. terá seus pesos salvos;
-7. será incluído na comparação final.
+Cada modelo possui seu próprio diretório de resultados.
 
 ---
 
-# Resultados
+# O que acontece durante a execução?
 
-A pasta `results/` é criada automaticamente.
-
-Após executar:
+Ao executar:
 
 ```bash
 python main.py --model all
 ```
 
-a estrutura será semelhante a:
+o programa:
 
-```text
-results/
-│
-├── resnet/
-│   ├── best_model.pth
-│   ├── training_history.json
-│   ├── metrics.json
-│   ├── confusion_matrix.png
-│   ├── loss_curve.png
-│   └── accuracy_curve.png
-│
-├── googlenet/
-│   ├── best_model.pth
-│   ├── training_history.json
-│   ├── metrics.json
-│   ├── confusion_matrix.png
-│   ├── loss_curve.png
-│   └── accuracy_curve.png
-│
-├── mobilenet/
-│   ├── best_model.pth
-│   ├── training_history.json
-│   ├── metrics.json
-│   ├── confusion_matrix.png
-│   ├── loss_curve.png
-│   └── accuracy_curve.png
-│
-└── comparison.json
-```
+1. carrega o dataset;
+2. prepara os DataLoaders;
+3. cria cada arquitetura;
+4. utiliza os pesos pré-treinados;
+5. treina o modelo;
+6. calcula métricas de treinamento;
+7. avalia no conjunto de validação;
+8. aplica early stopping quando necessário;
+9. salva o melhor checkpoint;
+10. avalia o melhor modelo no conjunto de teste;
+11. calcula as métricas finais;
+12. gera gráficos;
+13. salva os resultados em JSON;
+14. ao final, gera uma comparação entre os três modelos.
 
 ---
 
-# Métricas
+# Métricas coletadas
 
-Durante o treinamento são registradas:
+O projeto coleta métricas durante o treinamento e durante a avaliação final.
+
+## Durante o treinamento
+
+São registradas:
 
 * Training Loss
 * Validation Loss
 * Training Accuracy
 * Validation Accuracy
-* Tempo de cada época
-* Tempo total de treinamento
-* Melhor Validation Accuracy
-* Número de épocas executadas
+* tempo por época
+* tempo total de treinamento
+* melhor Validation Accuracy
+* número de épocas executadas
 
-Durante a avaliação no conjunto de teste são calculadas:
+## Avaliação final
+
+São calculadas:
 
 * Accuracy
 * Precision Weighted
@@ -377,131 +378,170 @@ Durante a avaliação no conjunto de teste são calculadas:
 * Classification Report
 * Matriz de confusão
 
-Além disso, são registrados:
+O **F1 Macro** é especialmente importante neste projeto devido ao desbalanceamento das classes, pois atribui o mesmo peso a cada classe.
+
+---
+
+# Métricas de custo computacional
+
+Também são registrados:
 
 * número total de parâmetros;
 * número de parâmetros treináveis;
+* tempo total de treinamento;
+* tempo de avaliação;
 * dispositivo utilizado;
 * GPU utilizada;
-* memória máxima de GPU utilizada;
-* batch size;
-* tamanho das imagens;
-* learning rate;
-* weight decay;
-* número de workers;
-* seed;
-* utilização de pesos pré-treinados.
+* memória máxima utilizada pela GPU.
+
+Essas informações permitem comparar não apenas qual modelo possui melhor desempenho, mas também qual apresenta melhor relação entre **desempenho e custo computacional**.
 
 ---
 
-# Arquivos de resultados
+# Resultados
 
-## `training_history.json`
-
-Contém o histórico do treinamento de cada época.
-
-Pode ser utilizado para analisar a evolução de:
+Os resultados são automaticamente armazenados em:
 
 ```text
-Train Loss
-Validation Loss
-Train Accuracy
-Validation Accuracy
+results/
 ```
 
-e para estudar possíveis sinais de overfitting.
-
----
-
-## `metrics.json`
-
-Contém as métricas finais do modelo no conjunto de teste, além de informações sobre:
-
-* parâmetros;
-* tempo de treinamento;
-* tempo de avaliação;
-* hardware;
-* configuração do experimento.
-
-Esse é um dos principais arquivos para a elaboração das tabelas do artigo.
-
----
-
-## `confusion_matrix.png`
-
-Apresenta a matriz de confusão do modelo no conjunto de teste.
-
-Ela permite identificar quais classes são mais confundidas entre si.
-
----
-
-## `loss_curve.png`
-
-Apresenta:
+Para cada arquitetura:
 
 ```text
-Training Loss
-Validation Loss
+results/
+├── resnet/
+│   ├── best_model.pth
+│   ├── metrics.json
+│   ├── training_history.json
+│   ├── confusion_matrix.png
+│   └── loss_curve.png
+│
+├── googlenet/
+│   ├── best_model.pth
+│   ├── metrics.json
+│   ├── training_history.json
+│   ├── confusion_matrix.png
+│   └── loss_curve.png
+│
+└── mobilenet/
+    ├── best_model.pth
+    ├── metrics.json
+    ├── training_history.json
+    ├── confusion_matrix.png
+    └── loss_curve.png
 ```
 
-ao longo das épocas.
-
----
-
-## `accuracy_curve.png`
-
-Apresenta:
-
-```text
-Training Accuracy
-Validation Accuracy
-```
-
-ao longo das épocas.
-
----
-
-## `comparison.json`
-
-Quando o comando:
-
-```bash
-python main.py --model all
-```
-
-é utilizado, os resultados das três arquiteturas são reunidos automaticamente em:
+Quando todos os modelos forem executados, também será criado:
 
 ```text
 results/comparison.json
 ```
 
-Esse arquivo facilita a comparação direta entre os modelos.
+Esse arquivo contém os resultados consolidados dos três modelos.
 
 ---
 
-# Comparação dos modelos
+# Comparação dos resultados
 
-Os principais indicadores para comparação serão:
+Depois que os três modelos forem treinados, pode-se executar:
 
-| Modelo            | Accuracy | F1 Macro | F1 Weighted | Parâmetros | Tempo |
-| ----------------- | -------: | -------: | ----------: | ---------: | ----: |
-| ResNet18          |        — |        — |           — |          — |     — |
-| GoogLeNet         |        — |        — |           — |          — |     — |
-| MobileNetV3 Small |        — |        — |           — |          — |     — |
+```bash
+python -m src.compare_results
+```
+
+Esse script apresenta uma comparação dos principais resultados obtidos pelos modelos.
+
+As comparações incluem:
+
+| Modelo      | Accuracy | F1 Macro | F1 Weighted | Parâmetros | Tempo |
+| ----------- | -------: | -------: | ----------: | ---------: | ----: |
+| ResNet18    |        - |        - |           - |          - |     - |
+| GoogLeNet   |        - |        - |           - |          - |     - |
+| MobileNetV3 |        - |        - |           - |          - |     - |
 
 Os valores serão preenchidos após a execução dos experimentos.
 
-A análise também poderá considerar:
+---
 
-* Precision;
-* Recall;
-* desempenho individual por classe;
-* matriz de confusão;
-* evolução de Loss;
-* evolução de Accuracy;
-* número de parâmetros;
-* tempo de treinamento;
-* utilização de memória da GPU.
+# Arquivos importantes para o artigo
+
+Os principais arquivos utilizados posteriormente na análise são:
+
+### `metrics.json`
+
+Contém as métricas finais do modelo, informações de hardware, quantidade de parâmetros e tempos de execução.
+
+### `training_history.json`
+
+Contém os dados obtidos durante cada época do treinamento.
+
+Pode ser utilizado para produzir gráficos e analisar:
+
+* convergência;
+* overfitting;
+* estabilidade do treinamento;
+* evolução da loss;
+* evolução da acurácia.
+
+### `confusion_matrix.png`
+
+Permite analisar quais classes são mais confundidas pelo modelo.
+
+### `loss_curve.png`
+
+Mostra a evolução da loss de treinamento e validação.
+
+### `accuracy_curve.png`
+
+Mostra a evolução da accuracy de treinamento e validação.
+
+### `comparison.json`
+
+Consolida os resultados dos três modelos e facilita a criação das tabelas comparativas do artigo.
+
+---
+
+# Fluxo do experimento
+
+```text
+                  Galaxy Zoo Dataset
+                         │
+                         ▼
+                  Inspeção dos dados
+                         │
+                         ▼
+                  Pré-processamento
+                         │
+                         ▼
+                     DataLoader
+                         │
+             ┌───────────┼───────────┐
+             ▼           ▼           ▼
+          ResNet18    GoogLeNet   MobileNetV3
+             │           │           │
+             └───────────┼───────────┘
+                         ▼
+                     Treinamento
+                         │
+                         ▼
+                  Melhor checkpoint
+                         │
+                         ▼
+                    Teste final
+                         │
+                         ▼
+                      Métricas
+                         │
+                         ▼
+                Matrizes e gráficos
+                         │
+                         ▼
+                  Comparação final
+                         │
+                         ▼
+                  Artigo científico
+```
 
 ---
 
@@ -513,85 +553,84 @@ O projeto utiliza uma seed fixa:
 SEED = 42
 ```
 
-A seed é aplicada ao Python, NumPy e PyTorch.
+A seed é aplicada às principais bibliotecas utilizadas no treinamento.
 
-Além disso, são configurados os parâmetros de determinismo do CUDA/cuDNN quando uma GPU está disponível.
-
-Isso permite tornar os experimentos mais reprodutíveis.
+Além disso, os três modelos utilizam a mesma configuração experimental, permitindo uma comparação mais justa entre as arquiteturas.
 
 ---
 
-# Fluxo do experimento
+# Observação sobre os experimentos
 
-```text
-             Galaxy Zoo Dataset
-                     │
-                     ▼
-             Carregamento
-                     │
-                     ▼
-            Pré-processamento
-                     │
-                     ▼
-               DataLoaders
-                     │
-          ┌──────────┼──────────┐
-          ▼          ▼          ▼
-       ResNet18   GoogLeNet  MobileNetV3
-          │          │          │
-          └──────────┼──────────┘
-                     ▼
-                Treinamento
-                     │
-                     ▼
-              Melhor modelo
-                     │
-                     ▼
-                Avaliação
-                     │
-          ┌──────────┼──────────┐
-          ▼          ▼          ▼
-       Métricas   Gráficos   Confusão
-          │
-          ▼
-       comparison.json
-          │
-          ▼
-     Comparação para o artigo
+Os modelos são treinados utilizando **transfer learning**, com pesos pré-treinados.
+
+A configuração atual utiliza:
+
+```python
+PRETRAINED = True
+FREEZE_BACKBONE = False
+```
+
+Isso significa que os pesos pré-treinados são utilizados como inicialização, mas toda a rede pode ser ajustada durante o treinamento.
+
+O objetivo do experimento é manter a metodologia consistente entre as arquiteturas, variando principalmente a arquitetura da rede.
+
+---
+
+# Comandos essenciais
+
+### Verificar dataset
+
+```bash
+python -m src.inspect_dataset
+```
+
+### Treinar ResNet18
+
+```bash
+python main.py --model resnet
+```
+
+### Treinar GoogLeNet
+
+```bash
+python main.py --model googlenet
+```
+
+### Treinar MobileNetV3
+
+```bash
+python main.py --model mobilenet
+```
+
+### Treinar todos
+
+```bash
+python main.py --model all
+```
+
+### Comparar resultados
+
+```bash
+python -m src.compare_results
 ```
 
 ---
 
-# Experimento para o artigo
+# Objetivo do projeto
 
-O objetivo é manter as condições experimentais iguais para as três arquiteturas, permitindo uma comparação mais justa.
+O objetivo não é apenas identificar qual arquitetura apresenta a maior acurácia.
 
-Os modelos serão treinados utilizando:
+A análise pretende comparar as arquiteturas considerando:
 
-* mesmo dataset;
-* mesmas divisões `train`, `validation` e `test`;
-* mesmo tamanho de entrada;
-* mesmo batch size;
-* mesmo número máximo de épocas;
-* mesmo learning rate;
-* mesmo weight decay;
-* mesma seed;
-* pesos pré-treinados;
-* mesmo critério de avaliação.
+* desempenho de classificação;
+* F1 Macro;
+* F1 Weighted;
+* desempenho por classe;
+* matriz de confusão;
+* comportamento durante o treinamento;
+* quantidade de parâmetros;
+* tempo de treinamento;
+* tempo de avaliação;
+* utilização de memória da GPU.
 
-Dessa forma, as diferenças observadas nos resultados poderão ser relacionadas principalmente às características das arquiteturas avaliadas.
-
----
-
-# Artigo científico
-
-Os resultados produzidos pelo projeto serão utilizados na elaboração do artigo científico da disciplina de **Inteligência Artificial II**.
-
-Os arquivos presentes em `results/` servirão como fonte para:
-
-* tabelas comparativas;
-* gráficos;
-* análise de desempenho;
-* análise por classe;
-* discussão dos resultados;
-* conclusões sobre as arquiteturas.
+Dessa forma, os resultados poderão ser utilizados para discutir os **trade-offs entre desempenho e custo computacional** das arquiteturas avaliadas no artigo científico de Inteligência Artificial II.
