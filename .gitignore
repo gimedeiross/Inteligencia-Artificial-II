@@ -1,0 +1,50 @@
+# AMBIENTE VIRTUAL
+.venv/
+venv/
+env/
+ENV/
+
+# PYTHON
+__pycache__/
+*.py[cod]
+*$py.class
+
+*.so
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# JUPYTER
+.ipynb_checkpoints/
+
+# HUGGING FACE / DATASETS
+.cache/
+.cache/huggingface/
+huggingface/
+datasets/
+
+# RESULTADOS DOS EXPERIMENTOS
+results/
+
+*.pth
+*.pt
+*.ckpt
+
+# LOGS
+*.log
+
+# SISTEMA OPERACIONAL
+.DS_Store
+Thumbs.db
+
+# EDITORES / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# AMBIENTE / SEGREDOS
+.env
+.env.*
+!.env.example

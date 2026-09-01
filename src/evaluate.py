@@ -1,5 +1,6 @@
-import argparse
+import os
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
@@ -8,191 +9,358 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
     f1_score,
-    classification_report,
     confusion_matrix,
+    classification_report,
 )
 
-from torch.utils.data import DataLoader
 
-from .config import (
-    BATCH_SIZE,
-    NUM_CLASSES,
-    NUM_WORKERS,
-    CLASS_NAMES,
-    RESULTS_DIR,
-)
-
-from .dataset import get_dataset
-from .models import create_model
-from .utils import get_device
-
-
-@torch.no_grad()
-def predict(
+def evaluate_model(
     model,
-    dataloader,
-    device
+    test_loader,
+    device,
+    class_names,
+    results_dir
 ):
 
     model.eval()
 
     predictions = []
+
     labels = []
 
-    for batch in dataloader:
+    with torch.no_grad():
 
-        images = batch["pixel_values"].to(device)
+        for images, batch_labels in test_loader:
 
-        batch_labels = batch["label"]
+            images = images.to(
+                device,
+                non_blocking=True
+            )
 
-        outputs = model(images)
+            outputs = model(images)
 
-        if hasattr(outputs, "logits"):
-            outputs = outputs.logits
+            if hasattr(outputs, "logits"):
+                outputs = outputs.logits
 
-        batch_predictions = (
-            outputs.argmax(dim=1)
-            .cpu()
-            .numpy()
-        )
+            batch_predictions = (
+                outputs.argmax(dim=1)
+            )
 
-        predictions.extend(
-            batch_predictions
-        )
+            predictions.extend(
+                batch_predictions
+                .cpu()
+                .numpy()
+            )
 
-        labels.extend(
-            batch_labels.numpy()
-        )
-
-    return (
-        np.array(labels),
-        np.array(predictions)
-    )
-
-
-def main():
-
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        "--model",
-        required=True,
-        choices=[
-            "resnet",
-            "googlenet"
-        ]
-    )
-
-    args = parser.parse_args()
-
-    device = get_device()
-
-    dataset = get_dataset()
-
-    test_loader = DataLoader(
-        dataset["test"],
-        batch_size=BATCH_SIZE,
-        shuffle=False,
-        num_workers=NUM_WORKERS
-    )
-
-    model = create_model(
-        args.model,
-        NUM_CLASSES
-    )
-
-    model.load_state_dict(
-        torch.load(
-            f"{RESULTS_DIR}/{args.model}.pth",
-            map_location=device
-        )
-    )
-
-    model.to(device)
-
-    y_true, y_pred = predict(
-        model,
-        test_loader,
-        device
-    )
-
-    # -------------------------
-    # Métricas
-    # -------------------------
+            labels.extend(
+                batch_labels.numpy()
+            )
 
     accuracy = accuracy_score(
-        y_true,
-        y_pred
+        labels,
+        predictions
     )
 
-    precision = precision_score(
-        y_true,
-        y_pred,
+    precision_weighted = precision_score(
+        labels,
+        predictions,
+        average="weighted",
+        zero_division=0
+    )
+
+    recall_weighted = recall_score(
+        labels,
+        predictions,
+        average="weighted",
+        zero_division=0
+    )
+
+    f1_weighted = f1_score(
+        labels,
+        predictions,
+        average="weighted",
+        zero_division=0
+    )
+
+    precision_macro = precision_score(
+        labels,
+        predictions,
         average="macro",
         zero_division=0
     )
 
-    recall = recall_score(
-        y_true,
-        y_pred,
+    recall_macro = recall_score(
+        labels,
+        predictions,
         average="macro",
         zero_division=0
     )
 
-    f1 = f1_score(
-        y_true,
-        y_pred,
+    f1_macro = f1_score(
+        labels,
+        predictions,
         average="macro",
         zero_division=0
     )
 
-    print("\nRESULTADOS")
-    print("=" * 40)
-
-    print(
-        f"Accuracy:  {accuracy:.4f}"
+    report = classification_report(
+        labels,
+        predictions,
+        target_names=class_names,
+        output_dict=True,
+        zero_division=0
     )
-
-    print(
-        f"Precision: {precision:.4f}"
-    )
-
-    print(
-        f"Recall:    {recall:.4f}"
-    )
-
-    print(
-        f"F1-score:  {f1:.4f}"
-    )
-
-    # -------------------------
-    # Relatório
-    # -------------------------
-
-    print("\nRELATÓRIO POR CLASSE")
-    print("=" * 40)
-
-    print(
-        classification_report(
-            y_true,
-            y_pred,
-            target_names=CLASS_NAMES,
-            zero_division=0
-        )
-    )
-
-    # -------------------------
-    # Matriz de confusão
-    # -------------------------
 
     matrix = confusion_matrix(
-        y_true,
-        y_pred
+        labels,
+        predictions
     )
 
-    print("\nMATRIZ DE CONFUSÃO")
-    print(matrix)
+    save_confusion_matrix(
+        matrix,
+        class_names,
+        results_dir
+    )
+
+    return {
+        "accuracy": float(
+            accuracy
+        ),
+
+        "precision_weighted": float(
+            precision_weighted
+        ),
+
+        "recall_weighted": float(
+            recall_weighted
+        ),
+
+        "f1_weighted": float(
+            f1_weighted
+        ),
+
+        "precision_macro": float(
+            precision_macro
+        ),
+
+        "recall_macro": float(
+            recall_macro
+        ),
+
+        "f1_macro": float(
+            f1_macro
+        ),
+
+        "classification_report": report,
+    }
 
 
-if __name__ == "__main__":
-    main()
+def save_confusion_matrix(
+    matrix,
+    class_names,
+    results_dir
+):
+
+    os.makedirs(
+        results_dir,
+        exist_ok=True
+    )
+
+    figure, axis = plt.subplots(
+        figsize=(10, 8)
+    )
+
+    image = axis.imshow(
+        matrix
+    )
+
+    figure.colorbar(
+        image
+    )
+
+    axis.set(
+        xticks=np.arange(
+            len(class_names)
+        ),
+        yticks=np.arange(
+            len(class_names)
+        ),
+        xticklabels=class_names,
+        yticklabels=class_names,
+        xlabel="Predicted",
+        ylabel="True",
+        title="Confusion Matrix"
+    )
+
+    plt.setp(
+        axis.get_xticklabels(),
+        rotation=45,
+        ha="right"
+    )
+
+    for i in range(
+        matrix.shape[0]
+    ):
+
+        for j in range(
+            matrix.shape[1]
+        ):
+
+            axis.text(
+                j,
+                i,
+                matrix[i, j],
+                ha="center",
+                va="center"
+            )
+
+    figure.tight_layout()
+
+    figure.savefig(
+        os.path.join(
+            results_dir,
+            "confusion_matrix.png"
+        ),
+        dpi=300
+    )
+
+    plt.close(
+        figure
+    )
+
+
+def save_training_curves(
+    history,
+    results_dir
+):
+
+    os.makedirs(
+        results_dir,
+        exist_ok=True
+    )
+
+    epochs = range(
+        1,
+        len(
+            history["train_loss"]
+        ) + 1
+    )
+
+    # Loss
+
+    figure = plt.figure(
+        figsize=(8, 5)
+    )
+
+    plt.plot(
+        epochs,
+        history["train_loss"],
+        label="Train Loss"
+    )
+
+    plt.plot(
+        epochs,
+        history["val_loss"],
+        label="Validation Loss"
+    )
+
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title(
+        "Training and Validation Loss"
+    )
+    plt.legend()
+
+    figure.tight_layout()
+
+    figure.savefig(
+        os.path.join(
+            results_dir,
+            "loss_curve.png"
+        ),
+        dpi=300
+    )
+
+    plt.close(
+        figure
+    )
+
+    # Accuracy
+
+    figure = plt.figure(
+        figsize=(8, 5)
+    )
+
+    plt.plot(
+        epochs,
+        history["train_accuracy"],
+        label="Train Accuracy"
+    )
+
+    plt.plot(
+        epochs,
+        history["val_accuracy"],
+        label="Validation Accuracy"
+    )
+
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.title(
+        "Training and Validation Accuracy"
+    )
+
+    plt.legend()
+
+    figure.tight_layout()
+
+    figure.savefig(
+        os.path.join(
+            results_dir,
+            "accuracy_curve.png"
+        ),
+        dpi=300
+    )
+
+    plt.close(
+        figure
+    )
+
+    # F1 Macro
+
+    figure = plt.figure(
+        figsize=(8, 5)
+    )
+
+    plt.plot(
+        epochs,
+        history["train_f1_macro"],
+        label="Train F1 Macro"
+    )
+
+    plt.plot(
+        epochs,
+        history["val_f1_macro"],
+        label="Validation F1 Macro"
+    )
+
+    plt.xlabel("Epoch")
+    plt.ylabel("F1 Macro")
+    plt.title(
+        "Training and Validation F1 Macro"
+    )
+
+    plt.legend()
+
+    figure.tight_layout()
+
+    figure.savefig(
+        os.path.join(
+            results_dir,
+            "f1_macro_curve.png"
+        ),
+        dpi=300
+    )
+
+    plt.close(
+        figure
+    )
