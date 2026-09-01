@@ -5,16 +5,68 @@ import torch
 
 def get_logits(outputs):
     """
-    Extrai os logits principais de diferentes arquiteturas.
+    Extrai os logits principais das diferentes arquiteturas.
 
-    Para modelos como GoogLeNet, que possuem saídas auxiliares,
-    utiliza apenas a saída principal para cálculo das métricas.
+    Para o GoogLeNet, que possui saídas auxiliares durante
+    o treinamento, utiliza apenas a saída principal para
+    validação e cálculo das métricas.
     """
 
     if hasattr(outputs, "logits"):
         return outputs.logits
 
     return outputs
+
+
+def compute_training_loss(outputs, labels, criterion):
+    """
+    Calcula a loss durante o treinamento.
+
+    Para o GoogLeNet, utiliza a saída principal e as duas
+    saídas auxiliares.
+
+    Para ResNet e MobileNet, utiliza apenas a saída principal.
+    """
+
+    if hasattr(outputs, "logits"):
+
+        main_loss = criterion(
+            outputs.logits,
+            labels
+        )
+
+        loss = main_loss
+
+        if (
+            hasattr(outputs, "aux_logits1")
+            and outputs.aux_logits1 is not None
+        ):
+            aux1_loss = criterion(
+                outputs.aux_logits1,
+                labels
+            )
+
+            loss += 0.3 * aux1_loss
+
+        if (
+            hasattr(outputs, "aux_logits2")
+            and outputs.aux_logits2 is not None
+        ):
+            aux2_loss = criterion(
+                outputs.aux_logits2,
+                labels
+            )
+
+            loss += 0.3 * aux2_loss
+
+        return loss, outputs.logits
+
+    loss = criterion(
+        outputs,
+        labels
+    )
+
+    return loss, outputs
 
 
 def train_one_epoch(
@@ -24,6 +76,10 @@ def train_one_epoch(
     optimizer,
     device
 ):
+    """
+    Treina o modelo durante uma época.
+    """
+
     model.train()
 
     total_loss = 0.0
@@ -46,51 +102,11 @@ def train_one_epoch(
 
         outputs = model(images)
 
-        # GoogLeNet retorna:
-        # GoogLeNetOutputs(
-        #     logits,
-        #     aux_logits2,
-        #     aux_logits1
-        # )
-        #
-        # Durante o treinamento, utilizamos
-        # também as saídas auxiliares.
-
-        if hasattr(outputs, "logits"):
-
-            logits = outputs.logits
-
-            loss = criterion(
-                logits,
-                labels
-            )
-
-            if (
-                hasattr(outputs, "aux_logits1")
-                and outputs.aux_logits1 is not None
-            ):
-                loss += 0.3 * criterion(
-                    outputs.aux_logits1,
-                    labels
-                )
-
-            if (
-                hasattr(outputs, "aux_logits2")
-                and outputs.aux_logits2 is not None
-            ):
-                loss += 0.3 * criterion(
-                    outputs.aux_logits2,
-                    labels
-                )
-
-        else:
-
-            logits = outputs
-
-            loss = criterion(
-                logits,
-                labels
-            )
+        loss, logits = compute_training_loss(
+            outputs,
+            labels,
+            criterion
+        )
 
         loss.backward()
 
@@ -122,6 +138,12 @@ def validate(
     criterion,
     device
 ):
+    """
+    Avalia o modelo no conjunto de validação.
+
+    Durante a validação são utilizados apenas os logits
+    principais, inclusive no GoogLeNet.
+    """
 
     model.eval()
 
@@ -183,6 +205,12 @@ def train_model(
     patience,
     checkpoint_path
 ):
+    """
+    Executa o treinamento completo com early stopping.
+
+    O melhor modelo é definido pela maior acurácia
+    no conjunto de validação.
+    """
 
     history = {
         "train_loss": [],
@@ -202,14 +230,12 @@ def train_model(
 
         epoch_start = time.perf_counter()
 
-        train_loss, train_accuracy = (
-            train_one_epoch(
-                model,
-                train_loader,
-                criterion,
-                optimizer,
-                device
-            )
+        train_loss, train_accuracy = train_one_epoch(
+            model,
+            train_loader,
+            criterion,
+            optimizer,
+            device
         )
 
         val_loss, val_accuracy = validate(
@@ -271,10 +297,7 @@ def train_model(
 
             epochs_without_improvement += 1
 
-        if (
-            epochs_without_improvement
-            >= patience
-        ):
+        if epochs_without_improvement >= patience:
 
             print(
                 "  → Early stopping."

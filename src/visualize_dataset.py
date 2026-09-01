@@ -1,5 +1,4 @@
 import os
-import math
 
 import matplotlib.pyplot as plt
 
@@ -21,39 +20,26 @@ def load_data():
         DATASET_NAME
     )
 
-
 def show_samples(
     dataset,
     samples_per_class=4
 ):
+    class_samples = {
+        class_id: []
+        for class_id in range(len(CLASS_NAMES))
+    }
 
-    images = []
-    labels = []
+    for example in dataset:
+        label = example["label"]
 
-    for class_id in range(
-        len(CLASS_NAMES)
-    ):
+        if len(class_samples[label]) < samples_per_class:
+            class_samples[label].append(example)
 
-        class_samples = []
-
-        for example in dataset:
-
-            if example["label"] == class_id:
-
-                class_samples.append(
-                    example
-                )
-
-                if len(class_samples) >= samples_per_class:
-                    break
-
-        for example in class_samples:
-            images.append(
-                example["image"]
-            )
-            labels.append(
-                class_id
-            )
+        if all(
+            len(samples) >= samples_per_class
+            for samples in class_samples.values()
+        ):
+            break
 
     columns = samples_per_class
     rows = len(CLASS_NAMES)
@@ -64,20 +50,17 @@ def show_samples(
         figsize=(12, 24)
     )
 
-    for index, (image, label) in enumerate(
-        zip(images, labels)
-    ):
+    for row, class_id in enumerate(CLASS_NAMES):
+        samples = class_samples[row]
 
-        row = index // columns
-        column = index % columns
+        for column, example in enumerate(samples):
+            axis = axes[row][column]
 
-        axis = axes[row][column]
-
-        axis.imshow(image)
-        axis.set_title(
-            CLASS_NAMES[label]
-        )
-        axis.axis("off")
+            axis.imshow(example["image"])
+            axis.set_title(
+                CLASS_NAMES[row]
+            )
+            axis.axis("off")
 
     figure.suptitle(
         "Amostras do Galaxy Zoo Dataset",
@@ -93,7 +76,8 @@ def show_samples(
 
     figure.savefig(
         output_path,
-        dpi=300
+        dpi=300,
+        bbox_inches="tight"
     )
 
     plt.close(figure)

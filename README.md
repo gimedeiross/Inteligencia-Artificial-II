@@ -8,11 +8,13 @@ O projeto utiliza o dataset **`mrJordi0/galaxy-zoo-dataset`**, disponibilizado p
 * **GoogLeNet**
 * **MobileNetV3 Small**
 
+Os três modelos são **treinados do zero**, utilizando inicialização aleatória dos pesos.
+
 O objetivo é realizar os experimentos sob condições controladas e coletar métricas que possam ser utilizadas na elaboração do artigo científico.
 
 ---
 
-## Tecnologias
+# Tecnologias
 
 * Python
 * PyTorch
@@ -25,7 +27,7 @@ O objetivo é realizar os experimentos sob condições controladas e coletar mé
 
 ---
 
-## Estrutura do projeto
+# Estrutura do projeto
 
 ```text
 IA2/
@@ -41,6 +43,7 @@ IA2/
 │   ├── evaluate.py
 │   ├── utils.py
 │   ├── inspect_dataset.py
+│   ├── visualize_dataset.py
 │   └── compare_results.py
 │
 ├── results/
@@ -65,6 +68,7 @@ A pasta `results/` **não precisa ser criada manualmente**. O código cria os di
 
 ```bash
 git clone <URL_DO_REPOSITORIO>
+
 cd IA2
 ```
 
@@ -131,7 +135,7 @@ load_dataset(DATASET_NAME)
 
 Não é necessário baixar manualmente os arquivos nem adicioná-los ao repositório.
 
-Na primeira execução, aproximadamente os arquivos do dataset serão baixados para o cache local do Hugging Face. Execuções posteriores utilizarão os arquivos armazenados em cache.
+Na primeira execução, os arquivos do dataset serão baixados para o cache local do Hugging Face. Execuções posteriores utilizarão os arquivos armazenados em cache.
 
 ## Divisão dos dados
 
@@ -168,19 +172,19 @@ O dataset possui oito classes:
 
 Existe um desbalanceamento entre as classes, especialmente nas classes `Irregular` e `Merger`.
 
-Por isso, o treinamento utiliza **pesos de classe** para reduzir o impacto do desbalanceamento.
+Por isso, o treinamento utiliza **pesos de classe** na função de perda para reduzir o impacto do desbalanceamento.
 
 ---
 
 # Inspecionando o dataset
 
-Antes de iniciar os experimentos, é recomendado verificar a estrutura e distribuição do dataset:
+Antes de iniciar os experimentos, é recomendado verificar a estrutura e a distribuição do dataset:
 
 ```bash
 python -m src.inspect_dataset
 ```
 
-Esse comando apresenta:
+O script `inspect_dataset.py` realiza uma inspeção básica do dataset e apresenta informações como:
 
 * quantidade de exemplos em cada split;
 * features disponíveis;
@@ -188,7 +192,34 @@ Esse comando apresenta:
 * distribuição das classes;
 * percentual de cada classe.
 
-Isso permite verificar se o dataset está sendo carregado corretamente antes de iniciar um treinamento longo.
+Esse script serve principalmente para **validar o dataset antes do treinamento**, evitando iniciar experimentos longos com dados carregados ou estruturados incorretamente.
+
+---
+
+# Visualizando o dataset
+
+Também é possível gerar algumas visualizações das imagens antes do treinamento:
+
+```bash
+python -m src.visualize_dataset
+```
+
+O script `visualize_dataset.py` gera visualizações para facilitar a análise inicial dos dados.
+
+São produzidos:
+
+* exemplos de imagens de cada uma das oito classes;
+* gráfico com a distribuição das classes no conjunto de treinamento.
+
+Os arquivos são salvos em:
+
+```text
+results/
+├── dataset_samples.png
+└── class_distribution.png
+```
+
+Essas visualizações permitem verificar visualmente as classes e identificar o desbalanceamento do dataset antes da execução dos modelos.
 
 ---
 
@@ -200,7 +231,7 @@ Os principais parâmetros do experimento estão centralizados em:
 config.py
 ```
 
-Exemplo:
+A configuração utilizada nos experimentos é baseada em:
 
 ```python
 IMAGE_SIZE = 224
@@ -215,7 +246,7 @@ WEIGHT_DECAY = 1e-4
 
 NUM_WORKERS = 4
 
-PRETRAINED = True
+PRETRAINED = False
 
 FREEZE_BACKBONE = False
 
@@ -226,7 +257,25 @@ EARLY_STOPPING_PATIENCE = 3
 SEED = 42
 ```
 
-A utilização de um único arquivo de configuração garante que os três modelos sejam treinados utilizando os mesmos parâmetros experimentais.
+Os três modelos utilizam a mesma configuração experimental, permitindo uma comparação mais justa entre as arquiteturas.
+
+---
+
+# Estratégia de treinamento
+
+Os três modelos são **treinados do zero**.
+
+Isso significa que não são utilizados pesos previamente aprendidos em datasets como ImageNet.
+
+A configuração utilizada é:
+
+```python
+PRETRAINED = False
+```
+
+Consequentemente, cada arquitetura começa o treinamento com seus pesos inicializados aleatoriamente e aprende exclusivamente a partir do dataset Galaxy Zoo.
+
+A escolha por treinamento do zero mantém o experimento simples e permite comparar diretamente o comportamento das três arquiteturas sob as mesmas condições.
 
 ---
 
@@ -234,19 +283,15 @@ A utilização de um único arquivo de configuração garante que os três model
 
 ## ResNet18
 
-Implementada utilizando a versão disponibilizada pelo Torchvision:
+Implementada utilizando a arquitetura disponibilizada pelo Torchvision:
 
 ```text
 ResNet18
 ```
 
-O modelo utiliza pesos pré-treinados quando:
-
-```python
-PRETRAINED = True
-```
-
 A camada final é substituída para produzir oito classes.
+
+O modelo é inicializado sem pesos pré-treinados.
 
 ---
 
@@ -258,9 +303,22 @@ Implementada utilizando:
 GoogLeNet
 ```
 
-O modelo utiliza pesos pré-treinados e possui classificadores auxiliares (`aux1` e `aux2`), que também são adaptados para as oito classes do dataset.
+O modelo possui dois classificadores auxiliares (`aux1` e `aux2`), além do classificador principal.
 
-Durante o treinamento, a saída principal é utilizada para o cálculo da loss.
+Todos os classificadores são adaptados para produzir oito classes.
+
+Durante o treinamento, a função de perda considera:
+
+```text
+Loss =
+    Loss principal
+    + 0.3 × Loss auxiliar 1
+    + 0.3 × Loss auxiliar 2
+```
+
+Durante a validação e a avaliação final, somente a saída principal é utilizada.
+
+O modelo também é treinado do zero, sem pesos pré-treinados.
 
 ---
 
@@ -274,7 +332,9 @@ MobileNetV3 Small
 
 A camada classificadora final é substituída para produzir oito classes.
 
-A MobileNetV3 Small foi escolhida por possuir uma arquitetura consideravelmente mais leve, permitindo comparar não apenas desempenho de classificação, mas também custo computacional e quantidade de parâmetros.
+A MobileNetV3 Small foi escolhida por possuir uma arquitetura consideravelmente mais leve, permitindo comparar não apenas o desempenho de classificação, mas também o custo computacional e a quantidade de parâmetros.
+
+O modelo é treinado do zero.
 
 ---
 
@@ -292,7 +352,7 @@ python main.py --model resnet
 python main.py --model googlenet
 ```
 
-## MobileNetV3
+## MobileNetV3 Small
 
 ```bash
 python main.py --model mobilenet
@@ -333,17 +393,18 @@ o programa:
 1. carrega o dataset;
 2. prepara os DataLoaders;
 3. cria cada arquitetura;
-4. utiliza os pesos pré-treinados;
-5. treina o modelo;
-6. calcula métricas de treinamento;
-7. avalia no conjunto de validação;
-8. aplica early stopping quando necessário;
-9. salva o melhor checkpoint;
-10. avalia o melhor modelo no conjunto de teste;
-11. calcula as métricas finais;
-12. gera gráficos;
-13. salva os resultados em JSON;
-14. ao final, gera uma comparação entre os três modelos.
+4. inicializa os modelos sem pesos pré-treinados;
+5. configura a função de perda com pesos de classe;
+6. treina o modelo;
+7. calcula as métricas de treinamento;
+8. avalia no conjunto de validação;
+9. aplica early stopping quando necessário;
+10. salva o melhor checkpoint;
+11. avalia o melhor modelo no conjunto de teste;
+12. calcula as métricas finais;
+13. gera gráficos;
+14. salva os resultados em JSON;
+15. ao final, gera uma comparação entre os três modelos.
 
 ---
 
@@ -355,28 +416,28 @@ O projeto coleta métricas durante o treinamento e durante a avaliação final.
 
 São registradas:
 
-* Training Loss
-* Validation Loss
-* Training Accuracy
-* Validation Accuracy
-* tempo por época
-* tempo total de treinamento
-* melhor Validation Accuracy
-* número de épocas executadas
+* Training Loss;
+* Validation Loss;
+* Training Accuracy;
+* Validation Accuracy;
+* tempo por época;
+* tempo total de treinamento;
+* melhor Validation Accuracy;
+* número de épocas executadas.
 
 ## Avaliação final
 
 São calculadas:
 
-* Accuracy
-* Precision Weighted
-* Recall Weighted
-* F1-score Weighted
-* Precision Macro
-* Recall Macro
-* F1-score Macro
-* Classification Report
-* Matriz de confusão
+* Accuracy;
+* Precision Weighted;
+* Recall Weighted;
+* F1-score Weighted;
+* Precision Macro;
+* Recall Macro;
+* F1-score Macro;
+* Classification Report;
+* Matriz de confusão.
 
 O **F1 Macro** é especialmente importante neste projeto devido ao desbalanceamento das classes, pois atribui o mesmo peso a cada classe.
 
@@ -415,21 +476,24 @@ results/
 │   ├── metrics.json
 │   ├── training_history.json
 │   ├── confusion_matrix.png
-│   └── loss_curve.png
+│   ├── loss_curve.png
+│   └── accuracy_curve.png
 │
 ├── googlenet/
 │   ├── best_model.pth
 │   ├── metrics.json
 │   ├── training_history.json
 │   ├── confusion_matrix.png
-│   └── loss_curve.png
+│   ├── loss_curve.png
+│   └── accuracy_curve.png
 │
 └── mobilenet/
     ├── best_model.pth
     ├── metrics.json
     ├── training_history.json
     ├── confusion_matrix.png
-    └── loss_curve.png
+    ├── loss_curve.png
+    └── accuracy_curve.png
 ```
 
 Quando todos os modelos forem executados, também será criado:
@@ -466,17 +530,15 @@ Os valores serão preenchidos após a execução dos experimentos.
 
 # Arquivos importantes para o artigo
 
-Os principais arquivos utilizados posteriormente na análise são:
-
-### `metrics.json`
+## `metrics.json`
 
 Contém as métricas finais do modelo, informações de hardware, quantidade de parâmetros e tempos de execução.
 
-### `training_history.json`
+## `training_history.json`
 
 Contém os dados obtidos durante cada época do treinamento.
 
-Pode ser utilizado para produzir gráficos e analisar:
+Pode ser utilizado para analisar:
 
 * convergência;
 * overfitting;
@@ -484,19 +546,19 @@ Pode ser utilizado para produzir gráficos e analisar:
 * evolução da loss;
 * evolução da acurácia.
 
-### `confusion_matrix.png`
+## `confusion_matrix.png`
 
 Permite analisar quais classes são mais confundidas pelo modelo.
 
-### `loss_curve.png`
+## `loss_curve.png`
 
 Mostra a evolução da loss de treinamento e validação.
 
-### `accuracy_curve.png`
+## `accuracy_curve.png`
 
 Mostra a evolução da accuracy de treinamento e validação.
 
-### `comparison.json`
+## `comparison.json`
 
 Consolida os resultados dos três modelos e facilita a criação das tabelas comparativas do artigo.
 
@@ -511,6 +573,9 @@ Consolida os resultados dos três modelos e facilita a criação das tabelas com
                   Inspeção dos dados
                          │
                          ▼
+                  Visualização dos dados
+                         │
+                         ▼
                   Pré-processamento
                          │
                          ▼
@@ -522,7 +587,10 @@ Consolida os resultados dos três modelos e facilita a criação das tabelas com
              │           │           │
              └───────────┼───────────┘
                          ▼
-                     Treinamento
+              Inicialização aleatória
+                         │
+                         ▼
+                    Treinamento
                          │
                          ▼
                   Melhor checkpoint
@@ -559,29 +627,18 @@ Além disso, os três modelos utilizam a mesma configuração experimental, perm
 
 ---
 
-# Observação sobre os experimentos
-
-Os modelos são treinados utilizando **transfer learning**, com pesos pré-treinados.
-
-A configuração atual utiliza:
-
-```python
-PRETRAINED = True
-FREEZE_BACKBONE = False
-```
-
-Isso significa que os pesos pré-treinados são utilizados como inicialização, mas toda a rede pode ser ajustada durante o treinamento.
-
-O objetivo do experimento é manter a metodologia consistente entre as arquiteturas, variando principalmente a arquitetura da rede.
-
----
-
 # Comandos essenciais
 
 ### Verificar dataset
 
 ```bash
 python -m src.inspect_dataset
+```
+
+### Visualizar dataset
+
+```bash
+python -m src.visualize_dataset
 ```
 
 ### Treinar ResNet18
@@ -596,7 +653,7 @@ python main.py --model resnet
 python main.py --model googlenet
 ```
 
-### Treinar MobileNetV3
+### Treinar MobileNetV3 Small
 
 ```bash
 python main.py --model mobilenet
@@ -634,3 +691,14 @@ A análise pretende comparar as arquiteturas considerando:
 * utilização de memória da GPU.
 
 Dessa forma, os resultados poderão ser utilizados para discutir os **trade-offs entre desempenho e custo computacional** das arquiteturas avaliadas no artigo científico de Inteligência Artificial II.
+
+```
+
+### Uma observação importante
+
+Eu **não colocaria `FREEZE_BACKBONE = False` no README**, apesar de ele existir no `config.py`. Como vocês decidiram treinar do zero, esse parâmetro deixou de ter relevância para o experimento e pode até gerar confusão sobre transfer learning.
+
+Também corrigi a descrição do GoogLeNet: **as saídas auxiliares são usadas no treinamento**, com peso `0.3`, enquanto validação/teste usam apenas a saída principal.
+
+E agora o fluxo fica bem coerente: **inspecionar → visualizar → treinar → avaliar → comparar → usar os resultados no artigo**.
+```
