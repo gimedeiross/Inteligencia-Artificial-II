@@ -1,6 +1,9 @@
 import time
 
 import torch
+from sklearn.metrics import f1_score
+
+from utils import get_gpu_memory
 
 
 def get_logits(outputs):
@@ -86,6 +89,9 @@ def train_one_epoch(
     correct = 0
     total = 0
 
+    all_predictions = []
+    all_labels = []
+
     for images, labels in loader:
 
         images = images.to(
@@ -126,9 +132,25 @@ def train_one_epoch(
 
         total += labels.size(0)
 
+        all_predictions.extend(
+            predictions.detach().cpu().numpy()
+        )
+
+        all_labels.extend(
+            labels.detach().cpu().numpy()
+        )
+
+    f1_macro = f1_score(
+        all_labels,
+        all_predictions,
+        average="macro",
+        zero_division=0
+    )
+
     return (
         total_loss / total,
-        correct / total
+        correct / total,
+        f1_macro
     )
 
 
@@ -150,6 +172,9 @@ def validate(
     total_loss = 0.0
     correct = 0
     total = 0
+
+    all_predictions = []
+    all_labels = []
 
     with torch.no_grad():
 
@@ -188,9 +213,25 @@ def validate(
 
             total += labels.size(0)
 
+            all_predictions.extend(
+                predictions.detach().cpu().numpy()
+            )
+
+            all_labels.extend(
+                labels.detach().cpu().numpy()
+            )
+
+    f1_macro = f1_score(
+        all_labels,
+        all_predictions,
+        average="macro",
+        zero_division=0
+    )
+
     return (
         total_loss / total,
-        correct / total
+        correct / total,
+        f1_macro
     )
 
 
@@ -215,22 +256,28 @@ def train_model(
     history = {
         "train_loss": [],
         "train_accuracy": [],
+        "train_f1_macro": [],
         "val_loss": [],
         "val_accuracy": [],
+        "val_f1_macro": [],
         "epoch_time_seconds": [],
     }
 
+    best_val_f1_macro = 0.0
     best_val_accuracy = 0.0
 
     epochs_without_improvement = 0
 
     total_start = time.perf_counter()
 
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
+
     for epoch in range(epochs):
 
         epoch_start = time.perf_counter()
 
-        train_loss, train_accuracy = train_one_epoch(
+        train_loss, train_accuracy, train_f1_macro = train_one_epoch(
             model,
             train_loader,
             criterion,
@@ -238,7 +285,7 @@ def train_model(
             device
         )
 
-        val_loss, val_accuracy = validate(
+        val_loss, val_accuracy, val_f1_macro = validate(
             model,
             val_loader,
             criterion,
@@ -258,12 +305,20 @@ def train_model(
             train_accuracy
         )
 
+        history["train_f1_macro"].append(
+            train_f1_macro
+        )
+
         history["val_loss"].append(
             val_loss
         )
 
         history["val_accuracy"].append(
             val_accuracy
+        )
+
+        history["val_f1_macro"].append(
+            val_f1_macro
         )
 
         history["epoch_time_seconds"].append(
@@ -274,12 +329,15 @@ def train_model(
             f"Epoch {epoch + 1}/{epochs} | "
             f"Train Loss: {train_loss:.4f} | "
             f"Train Acc: {train_accuracy:.4f} | "
+            f"Train F1: {train_f1_macro:.4f} | "
             f"Val Loss: {val_loss:.4f} | "
-            f"Val Acc: {val_accuracy:.4f}"
+            f"Val Acc: {val_accuracy:.4f} | "
+            f"Val F1: {val_f1_macro:.4f}"
         )
 
-        if val_accuracy > best_val_accuracy:
+        if val_f1_macro > best_val_f1_macro:
 
+            best_val_f1_macro = val_f1_macro
             best_val_accuracy = val_accuracy
 
             epochs_without_improvement = 0
@@ -317,10 +375,18 @@ def train_model(
     ] = best_val_accuracy
 
     history[
+        "best_validation_f1_macro"
+    ] = best_val_f1_macro
+
+    history[
         "epochs_completed"
     ] = len(
         history["train_loss"]
     )
+
+    history[
+        "max_gpu_memory_gb"
+    ] = get_gpu_memory()
 
     model.load_state_dict(
         torch.load(

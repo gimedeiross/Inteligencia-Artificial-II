@@ -19,13 +19,6 @@ from config import (
     SEED
 )
 
-set_seed(SEED)
-
-os.makedirs(
-    RESULTS_DIR,
-    exist_ok=True
-)
-
 from dataset import load_galaxy_dataset
 from evaluate import (
     evaluate_model,
@@ -183,7 +176,7 @@ def train_single_model(
 
     test_start = time.perf_counter()
 
-    metrics = evaluate_model(
+    raw_metrics = evaluate_model(
         model=model,
         test_loader=loaders["test"],
         device=device,
@@ -196,51 +189,27 @@ def train_single_model(
         - test_start
     )
 
-    metrics[
-        "model"
-    ] = model_name
+    result = {
+        "model": model_name,
 
-    metrics[
-        "total_parameters"
-    ] = total_parameters
+        "metrics": raw_metrics,
 
-    metrics[
-        "trainable_parameters"
-    ] = trainable_parameters
+        "parameters": {
+            "total": total_parameters,
+            "trainable": trainable_parameters,
+        },
 
-    metrics[
-        "training_time_seconds"
-    ] = training_time
-
-    metrics[
-        "test_time_seconds"
-    ] = test_time
-
-    metrics[
-        "epochs_completed"
-    ] = history[
-        "epochs_completed"
-    ]
-
-    metrics[
-        "best_validation_f1_macro"
-    ] = history[
-        "best_validation_f1_macro"
-    ]
-
-    metrics[
-        "max_gpu_memory_gb"
-    ] = history[
-        "max_gpu_memory_gb"
-    ]
-
-    metrics[
-        "pretrained"
-    ] = PRETRAINED
-
-    metrics[
-        "class_weights"
-    ] = USE_CLASS_WEIGHTS
+        "training": {
+            "training_time_seconds": training_time,
+            "evaluation_time_seconds": test_time,
+            "epochs_completed": history["epochs_completed"],
+            "best_validation_accuracy": history["best_validation_accuracy"],
+            "best_validation_f1_macro": history["best_validation_f1_macro"],
+            "max_gpu_memory_gb": history["max_gpu_memory_gb"],
+            "pretrained": PRETRAINED,
+            "class_weights": USE_CLASS_WEIGHTS,
+        },
+    }
 
     save_json(
         history,
@@ -251,7 +220,7 @@ def train_single_model(
     )
 
     save_json(
-        metrics,
+        result,
         os.path.join(
             results_dir,
             "metrics.json"
@@ -261,29 +230,31 @@ def train_single_model(
     print("\nResultados:")
     print(
         f"Accuracy: "
-        f"{metrics['accuracy']:.4f}"
+        f"{raw_metrics['accuracy']:.4f}"
     )
 
     print(
         f"F1 Macro: "
-        f"{metrics['f1_macro']:.4f}"
+        f"{raw_metrics['f1_macro']:.4f}"
     )
 
     print(
         f"F1 Weighted: "
-        f"{metrics['f1_weighted']:.4f}"
+        f"{raw_metrics['f1_weighted']:.4f}"
     )
 
-    return metrics
+    return result
 
 
 def save_comparison(
     results
 ):
-
+    # Nome diferente de "comparison.json" para não colidir com
+    # o arquivo gerado por compare_results.py, que usa um
+    # formato de tabela achatado a partir destes mesmos dados.
     path = os.path.join(
         RESULTS_DIR,
-        "comparison.json"
+        "training_summary.json"
     )
 
     save_json(
@@ -292,13 +263,13 @@ def save_comparison(
     )
 
     print(
-        f"\nComparação salva em: {path}"
+        f"\nResumo do treinamento salvo em: {path}"
     )
 
 
 def main():
 
-    set_seed()
+    set_seed(SEED)
 
     device = get_device()
 
@@ -357,28 +328,31 @@ def main():
 
     for result in results:
 
+        metrics = result["metrics"]
+        training = result["training"]
+
         print(
             f"\n{result['model'].upper()}"
         )
 
         print(
             f"Accuracy: "
-            f"{result['accuracy']:.4f}"
+            f"{metrics['accuracy']:.4f}"
         )
 
         print(
             f"F1 Macro: "
-            f"{result['f1_macro']:.4f}"
+            f"{metrics['f1_macro']:.4f}"
         )
 
         print(
             f"F1 Weighted: "
-            f"{result['f1_weighted']:.4f}"
+            f"{metrics['f1_weighted']:.4f}"
         )
 
         print(
             f"Tempo: "
-            f"{result['training_time_seconds']:.2f}s"
+            f"{training['training_time_seconds']:.2f}s"
         )
 
 

@@ -69,25 +69,43 @@ eval_transform = transforms.Compose([
 
 
 def transform_train(example):
+    """
+    O `set_transform` do HuggingFace Datasets entrega o exemplo
+    em formato "escalar" (não em lista) quando acessado item a
+    item pelo DataLoader (dataset[i]), e em formato "batched"
+    (listas) quando acessado por slice (dataset[i:j]). Tratamos
+    os dois casos para não quebrar dependendo de como o dataset
+    é acessado.
+    """
 
-    example["pixel_values"] = [
-        train_transform(
-            image.convert("RGB")
+    if isinstance(example["image"], list):
+        example["pixel_values"] = [
+            train_transform(
+                image.convert("RGB")
+            )
+            for image in example["image"]
+        ]
+    else:
+        example["pixel_values"] = train_transform(
+            example["image"].convert("RGB")
         )
-        for image in example["image"]
-    ]
 
     return example
 
 
 def transform_eval(example):
 
-    example["pixel_values"] = [
-        eval_transform(
-            image.convert("RGB")
+    if isinstance(example["image"], list):
+        example["pixel_values"] = [
+            eval_transform(
+                image.convert("RGB")
+            )
+            for image in example["image"]
+        ]
+    else:
+        example["pixel_values"] = eval_transform(
+            example["image"].convert("RGB")
         )
-        for image in example["image"]
-    ]
 
     return example
 
