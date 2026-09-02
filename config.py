@@ -29,9 +29,14 @@ WEIGHT_DECAY = 1e-4
 NUM_WORKERS = 4
 
 # TRANSFER LEARNING
-PRETRAINED = False
+# PRETRAINED=True carrega pesos pré-treinados na ImageNet.
+# FREEZE_BACKBONE=True congela todo o backbone e treina apenas
+# a cabeça de classificação (feature extraction clássico).
+# FREEZE_BACKBONE=False faz fine-tuning: parte de pesos
+# pré-treinados mas ajusta a rede inteira.
+PRETRAINED = True
 
-FREEZE_BACKBONE = False
+FREEZE_BACKBONE = True
 
 # BALANCEAMENTO
 USE_CLASS_WEIGHTS = True

@@ -12,6 +12,7 @@ from config import (
     LEARNING_RATE,
     WEIGHT_DECAY,
     PRETRAINED,
+    FREEZE_BACKBONE,
     EARLY_STOPPING_PATIENCE,
     RESULTS_DIR,
     MODELS,
@@ -111,7 +112,8 @@ def train_single_model(
         model_name
     ](
         num_classes=NUM_CLASSES,
-        pretrained=PRETRAINED
+        pretrained=PRETRAINED,
+        freeze_backbone=FREEZE_BACKBONE
     )
 
     model = model.to(
@@ -129,7 +131,8 @@ def train_single_model(
 
     print(
         f"Parâmetros treináveis: "
-        f"{trainable_parameters:,}"
+        f"{trainable_parameters:,} "
+        f"({100 * trainable_parameters / total_parameters:.1f}%)"
     )
 
     criterion = create_criterion(
@@ -137,8 +140,17 @@ def train_single_model(
         device
     )
 
+    # Com o backbone congelado, model.parameters() ainda inclui
+    # os tensores com requires_grad=False; passá-los ao otimizador
+    # não quebra nada, mas é desnecessário. Filtramos para treinar
+    # apenas o que de fato tem gradiente (a cabeça de classificação).
+    trainable_params = filter(
+        lambda parameter: parameter.requires_grad,
+        model.parameters()
+    )
+
     optimizer = torch.optim.AdamW(
-        model.parameters(),
+        trainable_params,
         lr=LEARNING_RATE,
         weight_decay=WEIGHT_DECAY
     )
@@ -207,6 +219,7 @@ def train_single_model(
             "best_validation_f1_macro": history["best_validation_f1_macro"],
             "max_gpu_memory_gb": history["max_gpu_memory_gb"],
             "pretrained": PRETRAINED,
+            "freeze_backbone": FREEZE_BACKBONE,
             "class_weights": USE_CLASS_WEIGHTS,
         },
     }
