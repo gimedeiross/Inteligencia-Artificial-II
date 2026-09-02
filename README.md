@@ -8,7 +8,7 @@ O projeto utiliza o dataset **`mrJordi0/galaxy-zoo-dataset`**, disponibilizado p
 * **GoogLeNet**
 * **MobileNetV3 Small**
 
-Os três modelos são **treinados do zero**, utilizando inicialização aleatória dos pesos.
+Os três modelos utilizam **transfer learning**: partem de pesos pré-treinados na ImageNet e, por padrão, treinam apenas a cabeça de classificação (backbone congelado).
 
 O objetivo é realizar os experimentos sob condições controladas e coletar métricas que possam ser utilizadas na elaboração do artigo científico.
 
@@ -246,9 +246,9 @@ WEIGHT_DECAY = 1e-4
 
 NUM_WORKERS = 4
 
-PRETRAINED = False
+PRETRAINED = True
 
-FREEZE_BACKBONE = False
+FREEZE_BACKBONE = True
 
 USE_CLASS_WEIGHTS = True
 
@@ -261,21 +261,26 @@ Os três modelos utilizam a mesma configuração experimental, permitindo uma co
 
 ---
 
-# Estratégia de treinamento
+# Estratégia de treinamento — Transfer Learning
 
-Os três modelos são **treinados do zero**.
+Os três modelos utilizam **transfer learning** a partir de pesos pré-treinados na ImageNet.
 
-Isso significa que não são utilizados pesos previamente aprendidos em datasets como ImageNet.
-
-A configuração utilizada é:
+Dois parâmetros em `config.py` controlam o comportamento:
 
 ```python
-PRETRAINED = False
+PRETRAINED = True
+
+FREEZE_BACKBONE = True
 ```
 
-Consequentemente, cada arquitetura começa o treinamento com seus pesos inicializados aleatoriamente e aprende exclusivamente a partir do dataset Galaxy Zoo.
+* **`PRETRAINED = True`** — cada arquitetura é inicializada com os pesos pré-treinados na ImageNet (`ResNet18_Weights.DEFAULT`, `GoogLeNet_Weights.DEFAULT`, `MobileNet_V3_Small_Weights.DEFAULT`), em vez de pesos aleatórios.
+* **`FREEZE_BACKBONE = True`** — o extrator de características (backbone) é congelado (`requires_grad = False`), e **apenas a cabeça de classificação** — recriada para as 8 classes do Galaxy Zoo — é treinada. Essa técnica é conhecida como **feature extraction**.
 
-A escolha por treinamento do zero mantém o experimento simples e permite comparar diretamente o comportamento das três arquiteturas sob as mesmas condições.
+Se `FREEZE_BACKBONE = False`, o backbone continua inicializado com pesos da ImageNet, mas toda a rede é treinada (**fine-tuning**), ajustando também as camadas convolucionais pré-treinadas ao domínio do Galaxy Zoo.
+
+O otimizador (`AdamW`) recebe apenas os parâmetros com `requires_grad = True`, então, com o backbone congelado, o gradiente é calculado e atualizado exclusivamente na cabeça de classificação — reduzindo o custo computacional do treinamento.
+
+A quantidade de parâmetros treináveis (em relação ao total) é impressa no console a cada modelo treinado, e também fica registrada em `metrics.json` (`parameters.total`), permitindo comparar o "tamanho efetivo" do treinamento entre os três modelos.
 
 ---
 
@@ -289,9 +294,9 @@ Implementada utilizando a arquitetura disponibilizada pelo Torchvision:
 ResNet18
 ```
 
-A camada final é substituída para produzir oito classes.
+Inicializada com pesos pré-treinados na ImageNet (`ResNet18_Weights.DEFAULT`).
 
-O modelo é inicializado sem pesos pré-treinados.
+A camada final (`fc`) é substituída para produzir oito classes; essa nova camada é sempre treinável, independentemente de `FREEZE_BACKBONE`.
 
 ---
 
@@ -303,11 +308,13 @@ Implementada utilizando:
 GoogLeNet
 ```
 
+Inicializada com pesos pré-treinados na ImageNet (`GoogLeNet_Weights.DEFAULT`).
+
 O modelo possui dois classificadores auxiliares (`aux1` e `aux2`), além do classificador principal.
 
-Todos os classificadores são adaptados para produzir oito classes.
+Todos os classificadores (`fc`, `aux1.fc2`, `aux2.fc2`) são adaptados para produzir oito classes e permanecem sempre treináveis, mesmo com o restante do backbone congelado.
 
-Durante o treinamento, a função de perda considera:
+Durante o **treinamento**, a função de perda considera:
 
 ```text
 Loss =
@@ -316,9 +323,7 @@ Loss =
     + 0.3 × Loss auxiliar 2
 ```
 
-Durante a validação e a avaliação final, somente a saída principal é utilizada.
-
-O modelo também é treinado do zero, sem pesos pré-treinados.
+Durante a **validação e a avaliação final**, somente a saída principal é utilizada.
 
 ---
 
@@ -330,43 +335,39 @@ Implementada utilizando:
 MobileNetV3 Small
 ```
 
-A camada classificadora final é substituída para produzir oito classes.
+Inicializada com pesos pré-treinados na ImageNet (`MobileNet_V3_Small_Weights.DEFAULT`).
+
+Quando o backbone é congelado, apenas `model.features` (o extrator convolucional) tem os pesos congelados — todo o `model.classifier` (não só a última camada) permanece treinável, já que a cabeça do MobileNetV3 é composta por múltiplas camadas (`Linear → Hardswish → Dropout → Linear`) que costumam se beneficiar de treinar juntas.
 
 A MobileNetV3 Small foi escolhida por possuir uma arquitetura consideravelmente mais leve, permitindo comparar não apenas o desempenho de classificação, mas também o custo computacional e a quantidade de parâmetros.
-
-O modelo é treinado do zero.
 
 ---
 
 # Treinamento
 
-## ResNet18
+O `main.py` aceita a flag `--model` para escolher o que treinar:
+
+## Treinar um único modelo (útil para testar rapidamente se o pipeline está funcionando)
 
 ```bash
 python main.py --model resnet
 ```
 
-## GoogLeNet
-
 ```bash
 python main.py --model googlenet
 ```
-
-## MobileNetV3 Small
 
 ```bash
 python main.py --model mobilenet
 ```
 
-## Treinar os três modelos
-
-Para executar o experimento completo:
+## Treinar os três modelos sequencialmente
 
 ```bash
 python main.py --model all
 ```
 
-Os modelos serão treinados sequencialmente:
+`--model all` é o valor **padrão** — rodar `python main.py` sem nenhuma flag também treina os três modelos, na ordem definida em `config.MODELS`:
 
 ```text
 ResNet18
@@ -376,13 +377,13 @@ GoogLeNet
 MobileNetV3 Small
 ```
 
-Cada modelo possui seu próprio diretório de resultados.
+Cada modelo possui seu próprio diretório de resultados (`results/<modelo>/`), independentemente de ter sido treinado sozinho ou em conjunto com os outros.
 
 ---
 
 # O que acontece durante a execução?
 
-Ao executar:
+Ao executar (por exemplo):
 
 ```bash
 python main.py --model all
@@ -392,19 +393,18 @@ o programa:
 
 1. carrega o dataset;
 2. prepara os DataLoaders;
-3. cria cada arquitetura;
-4. inicializa os modelos sem pesos pré-treinados;
+3. cria cada arquitetura selecionada, carregando pesos pré-treinados na ImageNet;
+4. congela o backbone (se `FREEZE_BACKBONE = True`), mantendo treinável apenas a cabeça de classificação;
 5. configura a função de perda com pesos de classe;
-6. treina o modelo;
-7. calcula as métricas de treinamento;
-8. avalia no conjunto de validação;
-9. aplica early stopping quando necessário;
-10. salva o melhor checkpoint;
-11. avalia o melhor modelo no conjunto de teste;
-12. calcula as métricas finais;
-13. gera gráficos;
-14. salva os resultados em JSON;
-15. ao final, gera uma comparação entre os três modelos.
+6. treina o modelo, calculando accuracy e F1 macro por época em treino e validação;
+7. avalia no conjunto de validação a cada época e aplica early stopping quando necessário;
+8. salva o checkpoint sempre que o F1 macro de validação melhora;
+9. ao final do treino, recarrega o melhor checkpoint salvo;
+10. avalia o melhor modelo no conjunto de teste;
+11. calcula as métricas finais;
+12. gera gráficos (loss, accuracy, F1 macro e matriz de confusão);
+13. salva os resultados em JSON;
+14. ao final de todos os modelos selecionados, salva um resumo consolidado (`training_summary.json`).
 
 ---
 
@@ -414,20 +414,22 @@ O projeto coleta métricas durante o treinamento e durante a avaliação final.
 
 ## Durante o treinamento
 
-São registradas:
+São registradas por época:
 
-* Training Loss;
-* Validation Loss;
-* Training Accuracy;
-* Validation Accuracy;
+* Training Loss / Validation Loss;
+* Training Accuracy / Validation Accuracy;
+* Training F1 Macro / Validation F1 Macro;
 * tempo por época;
 * tempo total de treinamento;
-* melhor Validation Accuracy;
-* número de épocas executadas.
+* melhor Validation F1 Macro e a Validation Accuracy correspondente;
+* número de épocas executadas;
+* memória máxima utilizada pela GPU (`max_gpu_memory_gb`).
+
+O **F1 Macro de validação** — e não a accuracy — é o critério usado para decidir qual checkpoint salvar e para o early stopping, por ser mais robusto ao desbalanceamento entre classes.
 
 ## Avaliação final
 
-São calculadas:
+São calculadas, no conjunto de teste:
 
 * Accuracy;
 * Precision Weighted;
@@ -448,7 +450,7 @@ O **F1 Macro** é especialmente importante neste projeto devido ao desbalanceame
 Também são registrados:
 
 * número total de parâmetros;
-* número de parâmetros treináveis;
+* número de parâmetros treináveis (relevante especialmente com `FREEZE_BACKBONE = True`, quando esse número é bem menor que o total);
 * tempo total de treinamento;
 * tempo de avaliação;
 * dispositivo utilizado;
@@ -474,49 +476,52 @@ results/
 ├── resnet/
 │   ├── best_model.pth
 │   ├── metrics.json
-│   ├── training_history.json
+│   ├── history.json
 │   ├── confusion_matrix.png
 │   ├── loss_curve.png
-│   └── accuracy_curve.png
+│   ├── accuracy_curve.png
+│   └── f1_macro_curve.png
 │
 ├── googlenet/
 │   ├── best_model.pth
 │   ├── metrics.json
-│   ├── training_history.json
+│   ├── history.json
 │   ├── confusion_matrix.png
 │   ├── loss_curve.png
-│   └── accuracy_curve.png
+│   ├── accuracy_curve.png
+│   └── f1_macro_curve.png
 │
 └── mobilenet/
     ├── best_model.pth
     ├── metrics.json
-    ├── training_history.json
+    ├── history.json
     ├── confusion_matrix.png
     ├── loss_curve.png
-    └── accuracy_curve.png
+    ├── accuracy_curve.png
+    └── f1_macro_curve.png
 ```
 
-Quando todos os modelos forem executados, também será criado:
+Ao final de uma execução do `main.py`, também é criado:
 
 ```text
-results/comparison.json
+results/training_summary.json
 ```
 
-Esse arquivo contém os resultados consolidados dos três modelos.
+Esse arquivo consolida os resultados brutos dos modelos treinados **naquela execução** (um único modelo, se `--model resnet/googlenet/mobilenet` foi usado, ou os três, se `--model all`).
+
+> **Atenção:** `results/comparison.json` — a tabela comparativa formatada, usada para o artigo — **não** é gerado automaticamente pelo `main.py`. Ele é produzido separadamente por `compare_results.py` (veja a seção seguinte), que também exige que os três modelos já tenham sido treinados e seus `metrics.json` estejam presentes.
 
 ---
 
 # Comparação dos resultados
 
-Depois que os três modelos forem treinados, pode-se executar:
+Depois que os três modelos forem treinados (`python main.py --model all`, ou os três `--model <modelo>` individualmente), execute:
 
 ```bash
 python -m src.compare_results
 ```
 
-Esse script apresenta uma comparação dos principais resultados obtidos pelos modelos.
-
-As comparações incluem:
+Esse script lê `results/<modelo>/metrics.json` de cada arquitetura, monta a tabela comparativa e imprime no console:
 
 | Modelo      | Accuracy | F1 Macro | F1 Weighted | Parâmetros | Tempo |
 | ----------- | -------: | -------: | ----------: | ---------: | ----: |
@@ -526,41 +531,69 @@ As comparações incluem:
 
 Os valores serão preenchidos após a execução dos experimentos.
 
+Além da tabela, o script gera e salva:
+
+```text
+results/
+├── comparison.json
+└── model_comparison.png
+```
+
 ---
 
 # Arquivos importantes para o artigo
 
 ## `metrics.json`
 
-Contém as métricas finais do modelo, informações de hardware, quantidade de parâmetros e tempos de execução.
+Contém as métricas finais do modelo, organizadas em três blocos:
 
-## `training_history.json`
+```json
+{
+  "model": "resnet",
+  "metrics": { "accuracy": "...", "f1_macro": "...", "..." : "..." },
+  "parameters": { "total": "...", "trainable": "..." },
+  "training": {
+    "training_time_seconds": "...",
+    "evaluation_time_seconds": "...",
+    "epochs_completed": "...",
+    "best_validation_accuracy": "...",
+    "best_validation_f1_macro": "...",
+    "max_gpu_memory_gb": "...",
+    "pretrained": true,
+    "freeze_backbone": true,
+    "class_weights": true
+  }
+}
+```
 
-Contém os dados obtidos durante cada época do treinamento.
+Esse schema é o mesmo lido por `compare_results.py` para montar a tabela comparativa.
+
+## `history.json`
+
+Contém os dados obtidos durante cada época do treinamento (loss, accuracy e F1 macro de treino e validação).
 
 Pode ser utilizado para analisar:
 
 * convergência;
 * overfitting;
 * estabilidade do treinamento;
-* evolução da loss;
-* evolução da acurácia.
+* evolução da loss, da accuracy e do F1 macro.
 
 ## `confusion_matrix.png`
 
 Permite analisar quais classes são mais confundidas pelo modelo.
 
-## `loss_curve.png`
+## `loss_curve.png` / `accuracy_curve.png` / `f1_macro_curve.png`
 
-Mostra a evolução da loss de treinamento e validação.
+Mostram a evolução, por época, da loss, da accuracy e do F1 macro de treino e validação, respectivamente.
 
-## `accuracy_curve.png`
+## `training_summary.json`
 
-Mostra a evolução da accuracy de treinamento e validação.
+Gerado pelo `main.py` ao final de cada execução. Consolida em uma lista os resultados brutos (mesmo schema de `metrics.json`) de todos os modelos treinados naquela execução específica.
 
 ## `comparison.json`
 
-Consolida os resultados dos três modelos e facilita a criação das tabelas comparativas do artigo.
+Gerado pelo `compare_results.py` (execução separada, depois de treinar os três modelos). Consolida os resultados dos três modelos em uma tabela achatada e facilita a criação das tabelas comparativas do artigo.
 
 ---
 
@@ -587,13 +620,17 @@ Consolida os resultados dos três modelos e facilita a criação das tabelas com
              │           │           │
              └───────────┼───────────┘
                          ▼
-              Inicialização aleatória
+        Pesos pré-treinados (ImageNet)
+                         │
+                         ▼
+          Freeze do backbone (opcional)
                          │
                          ▼
                     Treinamento
                          │
                          ▼
                   Melhor checkpoint
+                    (F1 Macro)
                          │
                          ▼
                     Teste final
@@ -621,7 +658,7 @@ O projeto utiliza uma seed fixa:
 SEED = 42
 ```
 
-A seed é aplicada às principais bibliotecas utilizadas no treinamento.
+A seed é aplicada às principais bibliotecas utilizadas no treinamento (`random`, `numpy`, `torch`, `torch.cuda`), além de `cudnn.deterministic = True` e `cudnn.benchmark = False`.
 
 Além disso, os três modelos utilizam a mesma configuração experimental, permitindo uma comparação mais justa entre as arquiteturas.
 
@@ -641,31 +678,33 @@ python -m src.inspect_dataset
 python -m src.visualize_dataset
 ```
 
-### Treinar ResNet18
+### Treinar apenas um modelo (teste rápido do pipeline)
 
 ```bash
 python main.py --model resnet
 ```
 
-### Treinar GoogLeNet
-
 ```bash
 python main.py --model googlenet
 ```
-
-### Treinar MobileNetV3 Small
 
 ```bash
 python main.py --model mobilenet
 ```
 
-### Treinar todos
+### Treinar todos (padrão)
+
+```bash
+python main.py
+```
+
+ou, de forma explícita:
 
 ```bash
 python main.py --model all
 ```
 
-### Comparar resultados
+### Comparar resultados (depois de treinar os três modelos)
 
 ```bash
 python -m src.compare_results
@@ -673,7 +712,61 @@ python -m src.compare_results
 
 ---
 
+# Técnicas de IA utilizadas — base teórica
+
+Esta seção resume as técnicas empregadas no pipeline e **por que** cada uma foi escolhida neste experimento especificamente, servindo como rascunho para a seção de metodologia do artigo.
+
+## Transfer Learning
+
+* **Pesos pré-treinados na ImageNet** para os três backbones. Evita treinar do zero com um dataset de tamanho moderado (~156 mil imagens no total) e acelera a convergência, já que filtros de baixo/médio nível (bordas, texturas, formas) aprendidos na ImageNet são reaproveitáveis para imagens de galáxias.
+* **Freeze de backbone configurável** (`FREEZE_BACKBONE`). Por padrão, congelamos o backbone e treinamos só a cabeça de classificação (*feature extraction*) — reduz custo computacional e risco de overfitting em relação a ajustar toda a rede. A opção de fine-tuning completo fica disponível para quem quiser comparar o trade-off.
+
+## Balanceamento de classes
+
+* **Pesos de classe na função de perda** (`nn.CrossEntropyLoss(weight=...)`), calculados a partir da frequência de cada classe no split de treino. Necessário porque classes como `Irregular` e `Merger` são bem mais raras no Galaxy Zoo Dataset que `Round Elliptical` — sem isso, o modelo tenderia a ignorar as classes minoritárias.
+
+## Data Augmentation
+
+* `RandomHorizontalFlip` e `RandomRotation(10)` — galáxias não têm uma orientação "correta"; a orientação da imagem é um artefato da captura, não uma característica da classe.
+* `ColorJitter(brightness, contrast)` — simula variações de exposição entre observações astronômicas.
+* Aplicado **só no split de treino**; validação e teste usam transformação sem augmentation, para medir desempenho em condições realistas.
+
+## Normalização
+
+* `Normalize` com média/desvio-padrão da ImageNet — obrigatório para transfer learning: a distribuição de entrada precisa bater com a que os pesos pré-treinados "esperam".
+
+## Regularização
+
+* **Weight decay** (AdamW) — penaliza pesos grandes, reduz overfitting.
+* **Early stopping** (`EARLY_STOPPING_PATIENCE`) — interrompe o treino quando o F1 macro de validação para de melhorar, evitando treino desnecessário e overfitting tardio.
+* **Batch Normalization** e **Dropout**, herdados das arquiteturas do Torchvision — não implementados por nós, mas ativos e relevantes para a estabilidade do treino.
+
+## Loss auxiliar (GoogLeNet)
+
+* Os classificadores auxiliares (`aux1`, `aux2`) contribuem com peso `0.3` cada na loss de treino. Técnica original da arquitetura Inception/GoogLeNet para injetar gradiente em camadas intermediárias e mitigar vanishing gradient em redes profundas. Usados só no treino; validação e teste usam exclusivamente a saída principal, para uma avaliação justa e comparável às outras arquiteturas.
+
+## Otimização
+
+* **AdamW** em vez de Adam — desacopla o weight decay do gradiente adaptativo, mais correto teoricamente que L2 embutido no Adam clássico.
+* O otimizador recebe apenas parâmetros com `requires_grad=True`, coerente com o freeze de backbone — evita desperdiçar memória/computação com parâmetros congelados.
+
+## Critério de seleção de modelo
+
+* **F1 Macro de validação** (não accuracy) como critério para salvar o melhor checkpoint e para early stopping. Accuracy pode mascarar desempenho ruim em classes minoritárias; F1 macro pondera todas as classes igualmente, mais alinhado ao objetivo de comparar as arquiteturas de forma justa num dataset desbalanceado.
+
+## Avaliação
+
+* Métricas macro e weighted (precision, recall, F1), `classification_report` por classe e matriz de confusão — permitem diagnosticar *onde* cada modelo erra, não só *quanto*.
+* Split em train/validation/test, com o conjunto de teste usado **exclusivamente** na avaliação final, nunca durante o treino ou tuning.
+
+## Reprodutibilidade
+
+* Seed fixa aplicada a todas as bibliotecas relevantes (`random`, `numpy`, `torch`, `torch.cuda`) e `cudnn` em modo determinístico — garante que os três modelos sejam comparados sob exatamente as mesmas condições experimentais.
+
+---
+
 # Objetivo do projeto
+
 
 O objetivo não é apenas identificar qual arquitetura apresenta a maior acurácia.
 
@@ -685,20 +778,9 @@ A análise pretende comparar as arquiteturas considerando:
 * desempenho por classe;
 * matriz de confusão;
 * comportamento durante o treinamento;
-* quantidade de parâmetros;
+* quantidade de parâmetros totais e treináveis (relevante com backbone congelado);
 * tempo de treinamento;
 * tempo de avaliação;
 * utilização de memória da GPU.
 
 Dessa forma, os resultados poderão ser utilizados para discutir os **trade-offs entre desempenho e custo computacional** das arquiteturas avaliadas no artigo científico de Inteligência Artificial II.
-
-```
-
-### Uma observação importante
-
-Eu **não colocaria `FREEZE_BACKBONE = False` no README**, apesar de ele existir no `config.py`. Como vocês decidiram treinar do zero, esse parâmetro deixou de ter relevância para o experimento e pode até gerar confusão sobre transfer learning.
-
-Também corrigi a descrição do GoogLeNet: **as saídas auxiliares são usadas no treinamento**, com peso `0.3`, enquanto validação/teste usam apenas a saída principal.
-
-E agora o fluxo fica bem coerente: **inspecionar → visualizar → treinar → avaliar → comparar → usar os resultados no artigo**.
-```

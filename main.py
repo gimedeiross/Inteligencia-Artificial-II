@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 import time
@@ -20,15 +21,15 @@ from config import (
     SEED
 )
 
-from dataset import load_galaxy_dataset
-from evaluate import (
+from src.dataset import load_galaxy_dataset
+from src.evaluate import (
     evaluate_model,
     save_training_curves,
 )
 
-from train import train_model
+from src.train import train_model
 
-from utils import (
+from src.utils import (
     set_seed,
     get_device,
     count_parameters,
@@ -54,6 +55,31 @@ MODEL_CREATORS = {
     "googlenet": create_googlenet,
     "mobilenet": create_mobilenet,
 }
+
+
+def parse_args():
+
+    parser = argparse.ArgumentParser(
+        description=(
+            "Treina e avalia arquiteturas CNN "
+            "(ResNet18, GoogLeNet, MobileNetV3-Small) "
+            "no Galaxy Zoo Dataset."
+        )
+    )
+
+    parser.add_argument(
+        "--model",
+        choices=["resnet", "googlenet", "mobilenet", "all"],
+        default="all",
+        help=(
+            "Qual modelo treinar. Use 'resnet', 'googlenet' ou "
+            "'mobilenet' para testar rapidamente se o pipeline está "
+            "funcionando com um único modelo. Use 'all' (padrão) para "
+            "treinar os três sequencialmente e gerar a comparação final."
+        ),
+    )
+
+    return parser.parse_args()
 
 
 def create_results_directory(
@@ -282,6 +308,8 @@ def save_comparison(
 
 def main():
 
+    args = parse_args()
+
     set_seed(SEED)
 
     device = get_device()
@@ -308,13 +336,28 @@ def main():
         exist_ok=True
     )
 
+    # --model all (padrão) treina os três sequencialmente, na ordem
+    # definida em config.MODELS. --model resnet/googlenet/mobilenet
+    # treina só o modelo escolhido, útil para validar rapidamente
+    # se o pipeline está funcionando antes de rodar o experimento
+    # completo.
+    models_to_run = (
+        MODELS
+        if args.model == "all"
+        else [args.model]
+    )
+
+    print(
+        f"\nModelo(s) selecionado(s): {', '.join(models_to_run)}"
+    )
+
     print("\nCarregando dados...")
 
     loaders = load_galaxy_dataset()
 
     results = []
 
-    for model_name in MODELS:
+    for model_name in models_to_run:
 
         metrics = train_single_model(
             model_name,
