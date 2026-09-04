@@ -8,7 +8,7 @@ O projeto utiliza o dataset **`mrJordi0/galaxy-zoo-dataset`**, disponibilizado p
 * **GoogLeNet**
 * **MobileNetV3 Small**
 
-Os três modelos utilizam **transfer learning**: partem de pesos pré-treinados na ImageNet e, por padrão, treinam apenas a cabeça de classificação (backbone congelado).
+Os três modelos utilizam **transfer learning**: partem de pesos pré-treinados na ImageNet e, atualmente, treinam a rede inteira (fine-tuning completo — ver seção "Alterações"). O projeto também suporta a variante mais barata de treinar só a cabeça de classificação (backbone congelado), configurável em `config.py`.
 
 O objetivo é realizar os experimentos sob condições controladas e coletar métricas que possam ser utilizadas na elaboração do artigo científico.
 
@@ -271,17 +271,34 @@ Dois parâmetros em `config.py` controlam o comportamento:
 ```python
 PRETRAINED = True
 
-FREEZE_BACKBONE = True
+FREEZE_BACKBONE = False
 ```
 
 * **`PRETRAINED = True`** — cada arquitetura é inicializada com os pesos pré-treinados na ImageNet (`ResNet18_Weights.DEFAULT`, `GoogLeNet_Weights.DEFAULT`, `MobileNet_V3_Small_Weights.DEFAULT`), em vez de pesos aleatórios.
-* **`FREEZE_BACKBONE = True`** — o extrator de características (backbone) é congelado (`requires_grad = False`), e **apenas a cabeça de classificação** — recriada para as 8 classes do Galaxy Zoo — é treinada. Essa técnica é conhecida como **feature extraction**.
+* **`FREEZE_BACKBONE = False`** (configuração atual) — o backbone continua inicializado com pesos da ImageNet, mas toda a rede é treinada (**fine-tuning**), ajustando também as camadas convolucionais pré-treinadas ao domínio do Galaxy Zoo. Ver seção "Alterações" logo abaixo para o motivo da mudança.
 
-Se `FREEZE_BACKBONE = False`, o backbone continua inicializado com pesos da ImageNet, mas toda a rede é treinada (**fine-tuning**), ajustando também as camadas convolucionais pré-treinadas ao domínio do Galaxy Zoo.
+Se `FREEZE_BACKBONE = True`, o extrator de características (backbone) é congelado (`requires_grad = False`), e apenas a cabeça de classificação — recriada para as 8 classes do Galaxy Zoo — é treinada. Essa técnica é conhecida como **feature extraction**, e foi a configuração original deste projeto.
 
-O otimizador (`AdamW`) recebe apenas os parâmetros com `requires_grad = True`, então, com o backbone congelado, o gradiente é calculado e atualizado exclusivamente na cabeça de classificação — reduzindo o custo computacional do treinamento.
+O otimizador (`AdamW`) recebe apenas os parâmetros com `requires_grad = True`. Com `FREEZE_BACKBONE = False`, isso passa a incluir praticamente todos os parâmetros do modelo (não só a cabeça), aumentando o custo computacional do treinamento — ver seção "Alterações".
 
 A quantidade de parâmetros treináveis (em relação ao total) é impressa no console a cada modelo treinado, e também fica registrada em `metrics.json` (`parameters.total`), permitindo comparar o "tamanho efetivo" do treinamento entre os três modelos.
+
+---
+
+# Alterações
+
+## FREEZE_BACKBONE: True → False (fine-tuning completo)
+
+**Motivo:** com o backbone congelado (feature extraction), o ResNet18 atingiu ~41% de acurácia no teste — melhor que o baseline trivial de sempre prever a classe majoritária (~25%), mas as curvas de treino mostravam a acurácia/F1 de validação achatando já por volta do epoch 4-5, com o F1 macro de validação até piorando levemente depois disso, enquanto o treino seguia subindo devagar. Isso é sinal de **teto de capacidade**, não de overfitting: um classificador linear sobre features fixas da ImageNet (fotos de objetos do dia a dia) tem dificuldade em capturar as diferenças sutis que definem morfologia de galáxia — ex.: o espectro contínuo entre "Round", "In-between" e "Cigar-shaped" Elliptical, ou a presença/ausência de barra central nas espirais.
+
+**O que muda:** com `FREEZE_BACKBONE = False`, todas as camadas convolucionais do backbone voltam a ter `requires_grad = True` (a lógica de qual código faz isso está comentada em `models/resnet.py`, `models/googlenet.py` e `models/mobilenet.py`), permitindo que as próprias features se especializem em texturas e formas de galáxias durante o treino, em vez de ficarem presas ao que a ImageNet ensinou.
+
+**Trade-offs a monitorar ao comparar os resultados:**
+
+* **Tempo de treino** deve aumentar bastante — o gradiente agora precisa ser calculado e propagado pela rede inteira, não só pela cabeça. Comparar `training.training_time_seconds` no `metrics.json` antes/depois.
+* **Memória GPU** (`max_gpu_memory_gb`) também deve subir de forma significativa, já que os gradientes e estados do otimizador (`AdamW`) agora existem para todos os parâmetros, não só para a cabeça.
+* **Risco de overfitting** aumenta com uma rede totalmente treinável e um dataset de tamanho moderado — vale acompanhar se o gap entre `train_loss` e `val_loss` volta a crescer nas curvas salvas em `results/<modelo>/loss_curve.png`; se isso acontecer, considerar reduzir `LEARNING_RATE` ou aumentar `WEIGHT_DECAY`/`EARLY_STOPPING_PATIENCE` (nenhum desses foi alterado nesta mudança).
+* Essa alteração vale para os **três modelos** (a flag é global em `config.py`), então a comparação final entre ResNet, GoogLeNet e MobileNet passa a refletir fine-tuning completo, não mais feature extraction.
 
 ---
 
@@ -720,7 +737,7 @@ Esta seção resume as técnicas empregadas no pipeline e **por que** cada uma f
 ## Transfer Learning
 
 * **Pesos pré-treinados na ImageNet** para os três backbones. Evita treinar do zero com um dataset de tamanho moderado (~156 mil imagens no total) e acelera a convergência, já que filtros de baixo/médio nível (bordas, texturas, formas) aprendidos na ImageNet são reaproveitáveis para imagens de galáxias.
-* **Freeze de backbone configurável** (`FREEZE_BACKBONE`). Por padrão, congelamos o backbone e treinamos só a cabeça de classificação (*feature extraction*) — reduz custo computacional e risco de overfitting em relação a ajustar toda a rede. A opção de fine-tuning completo fica disponível para quem quiser comparar o trade-off.
+* **Freeze de backbone configurável** (`FREEZE_BACKBONE`). Atualmente `False`: a rede inteira é ajustada (*fine-tuning* completo), permitindo que as próprias features convolucionais se especializem em morfologia de galáxia — mudança feita após o backbone congelado limitar o ResNet18 a ~41% de acurácia (ver seção "Alterações"). A opção de feature extraction (`True`, mais barata em tempo/memória, mas com teto de desempenho mais baixo) continua disponível para quem quiser comparar o trade-off.
 
 ## Balanceamento de classes
 
