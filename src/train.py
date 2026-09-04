@@ -3,7 +3,11 @@ import time
 import torch
 from sklearn.metrics import f1_score
 
-from utils import get_gpu_memory
+# Import absoluto com o caminho completo do pacote (src.utils),
+# igual ao padrão usado em main.py — não "from utils import ...",
+# que só funcionaria se utils.py estivesse na raiz do projeto
+# (junto com main.py), e não dentro de src/.
+from src.utils import get_gpu_memory
 
 
 def get_logits(outputs):
