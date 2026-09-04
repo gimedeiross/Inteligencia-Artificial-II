@@ -765,6 +765,24 @@ Esta seção resume as técnicas empregadas no pipeline e **por que** cada uma f
 
 ---
 
+# Funções de ativação por modelo
+
+O que muda entre as três arquiteturas em termos de funções de ativação — no backbone (herdado do torchvision, pré-treinado) e na cabeça de classificação (código nosso, em `models/*.py`).
+
+| Modelo | Ativação no backbone | Ativação na cabeça nova |
+|---|---|---|
+| **ResNet18** | ReLU (inplace), após cada BatchNorm dentro dos blocos residuais. Padrão da arquitetura original, não alterado. | Nenhuma — `model.fc` é uma única `nn.Linear`. Classificador linear puro sobre as features. |
+| **GoogLeNet** | ReLU dentro de cada módulo Inception, inclusive nos branches auxiliares (`aux1`, `aux2`). Padrão da arquitetura original, não alterado. | Nenhuma — `fc`, `aux1.fc2` e `aux2.fc2` são `nn.Linear` puras. |
+| **MobileNetV3-Small** | Mista: ReLU nas camadas iniciais de `features` (mais barata) e Hardswish nas camadas finais (mais expressiva). Decisão de design do paper original, não alterada. | Hardswish — herdada do `classifier` original (`Linear -> Hardswish -> Dropout -> Linear`); só a última `Linear` é substituída, então a Hardswish intermediária permanece ativa. |
+
+**Pontos a destacar:**
+
+* Nenhuma ativação é adicionada ou escolhida por nós — todas vêm de dentro dos backbones pré-treinados do torchvision. O único código que decide algo sobre ativação é a escolha de **não** adicionar nenhuma às cabeças novas do ResNet e do GoogLeNet, versus **herdar** a Hardswish já existente na cabeça do MobileNet.
+* Isso cria uma assimetria entre os três modelos: o MobileNet tem uma cabeça não-linear "de fábrica", enquanto ResNet e GoogLeNet ficam com *linear probing* puro (comum em transfer learning com backbone congelado). Vale mencionar essa diferença na metodologia do artigo, já que pode influenciar a comparação — não é só o backbone que difere entre os modelos, a capacidade da cabeça também difere.
+* Os comentários equivalentes a esta tabela estão nos docstrings de `create_model()` em `models/resnet.py`, `models/googlenet.py` e `models/mobilenet.py`.
+
+---
+
 # Objetivo do projeto
 
 
