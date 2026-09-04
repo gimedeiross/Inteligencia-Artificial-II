@@ -1,0 +1,92 @@
+[
+    {
+        "model": "resnet",
+        "metrics": {
+            "accuracy": 0.4121381167644513,
+            "precision_weighted": 0.46323498323952456,
+            "recall_weighted": 0.4121381167644513,
+            "f1_weighted": 0.4145986929032237,
+            "precision_macro": 0.3650951484030793,
+            "recall_macro": 0.3936795780161786,
+            "f1_macro": 0.3540765125560099,
+            "classification_report": {
+                "Round Elliptical": {
+                    "precision": 0.47780257936507936,
+                    "recall": 0.5703923019985196,
+                    "f1-score": 0.5200080977123962,
+                    "support": 6755.0
+                },
+                "In-between Elliptical": {
+                    "precision": 0.5126475548060708,
+                    "recall": 0.310006373486297,
+                    "f1-score": 0.3863690523472873,
+                    "support": 7845.0
+                },
+                "Cigar-shaped Elliptical": {
+                    "precision": 0.24440807419530824,
+                    "recall": 0.30455472467709044,
+                    "f1-score": 0.2711864406779661,
+                    "support": 1471.0
+                },
+                "Edge-on Spiral": {
+                    "precision": 0.6146889558783228,
+                    "recall": 0.6807283763277694,
+                    "f1-score": 0.6460253456221198,
+                    "support": 3295.0
+                },
+                "Barred Spiral": {
+                    "precision": 0.3900993883792049,
+                    "recall": 0.4920443587270974,
+                    "f1-score": 0.435181236673774,
+                    "support": 4148.0
+                },
+                "Unbarred Spiral": {
+                    "precision": 0.49669131957960294,
+                    "recall": 0.20938628158844766,
+                    "f1-score": 0.2945861710723768,
+                    "support": 6094.0
+                },
+                "Irregular": {
+                    "precision": 0.12292851842691072,
+                    "recall": 0.4226190476190476,
+                    "f1-score": 0.19045794213450853,
+                    "support": 1176.0
+                },
+                "Merger": {
+                    "precision": 0.06149479659413434,
+                    "recall": 0.1597051597051597,
+                    "f1-score": 0.08879781420765027,
+                    "support": 407.0
+                },
+                "accuracy": 0.4121381167644513,
+                "macro avg": {
+                    "precision": 0.3650951484030793,
+                    "recall": 0.3936795780161786,
+                    "f1-score": 0.3540765125560099,
+                    "support": 31191.0
+                },
+                "weighted avg": {
+                    "precision": 0.46323498323952456,
+                    "recall": 0.4121381167644513,
+                    "f1-score": 0.4145986929032237,
+                    "support": 31191.0
+                }
+            }
+        },
+        "parameters": {
+            "total": 11180616,
+            "trainable": 4104
+        },
+        "training": {
+            "training_time_seconds": 2041.878035344,
+            "evaluation_time_seconds": 58.158996790999936,
+            "epochs_completed": 8,
+            "best_validation_accuracy": 0.41303302340493747,
+            "best_validation_f1_macro": 0.3566830202740454,
+            "max_gpu_memory_gb": 0.2669715881347656,
+            "pretrained": true,
+            "freeze_backbone": true,
+            "class_weights": true
+        }
+    }
+]
