@@ -4,6 +4,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
+# Métricas de avaliação vêm do scikit-learn em vez de calculadas
+# manualmente: são implementações padrão da literatura, já tratam
+# casos-limite (ex.: `zero_division=0` para classes sem nenhuma
+# previsão, relevante aqui pelo desbalanceamento do Galaxy Zoo) e
+# evitam reimplementar precision/recall/F1 e classification_report.
 from sklearn.metrics import (
     accuracy_score,
     precision_score,

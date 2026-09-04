@@ -16,14 +16,15 @@ O objetivo é realizar os experimentos sob condições controladas e coletar mé
 
 # Tecnologias
 
-* Python
-* PyTorch
-* Torchvision
-* Hugging Face Datasets
-* NumPy
-* Pillow
-* Scikit-learn
-* Matplotlib
+| Biblioteca | Por que é usada neste projeto |
+|---|---|
+| **PyTorch** | Framework de deep learning usado para os três modelos, o treino, a loss e o otimizador. Escolha padrão para trabalhar com `torchvision` e ter controle explícito do loop de treino (útil aqui porque GoogLeNet precisa de um tratamento especial para as saídas auxiliares — ver `train.py`). |
+| **Torchvision** | Fornece as três arquiteturas (`resnet18`, `googlenet`, `mobilenet_v3_small`) já com pesos pré-treinados na ImageNet (`*_Weights.DEFAULT`), evitando reimplementar as redes e permitindo transfer learning direto. |
+| **Hugging Face Datasets** | Carrega o dataset `mrJordi0/galaxy-zoo-dataset` diretamente do Hub (`load_dataset`), com cache local automático e suporte a `train_test_split` para gerar o split de validação. Preferido a baixar/organizar os arquivos manualmente em pastas (como pediria `torchvision.datasets.ImageFolder`), já que o dataset já é distribuído nesse formato. |
+| **NumPy** | Suporte numérico usado indiretamente por `torch`, `sklearn` e `matplotlib` (ex.: `np.arange` nos ticks da matriz de confusão em `evaluate.py`). |
+| **Pillow** | Manipulação das imagens carregadas pelo `datasets` (`.convert("RGB")` em `dataset.py`) antes de aplicar as transformações do `torchvision`. |
+| **Scikit-learn** | Métricas de avaliação (`accuracy_score`, `precision/recall/f1_score`, `classification_report`, `confusion_matrix`) e cálculo do F1 macro por época durante o treino (`train.py`). Preferido a calcular as métricas manualmente: são implementações testadas e padrão da literatura, incluindo o tratamento de `zero_division` para classes sem previsões. |
+| **Matplotlib** | Geração de todos os gráficos salvos em `results/` — curvas de treino, matriz de confusão, distribuição de classes e o gráfico comparativo final (`compare_results.py`). |
 
 ---
 

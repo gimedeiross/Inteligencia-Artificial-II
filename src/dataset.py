@@ -5,6 +5,13 @@ from torch.utils.data import DataLoader
 
 from torchvision import transforms
 
+# Usamos a biblioteca `datasets` (Hugging Face) em vez de
+# `torchvision.datasets.ImageFolder` porque o Galaxy Zoo Dataset
+# já é distribuído no Hugging Face Hub nesse formato: `load_dataset`
+# baixa e faz cache localmente sem precisar organizar as imagens
+# manualmente em pastas por classe, e `train_test_split` (usado
+# abaixo) facilita gerar o split de validação que o dataset não
+# tem por padrão.
 from config import (
     DATASET_NAME,
     IMAGE_SIZE,
