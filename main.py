@@ -296,8 +296,49 @@ def save_comparison(
         "training_summary.json"
     )
 
+    # `results` contém só os modelos rodados NESTA execução
+    # (ex.: um único modelo, se `--model resnet/googlenet/
+    # mobilenet` foi usado). Sem o merge abaixo, cada execução
+    # sobrescreveria o arquivo inteiro com só esse(s) modelo(s),
+    # apagando os resultados de execuções anteriores com outros
+    # modelos — problema real quando main.py é rodado uma vez
+    # por modelo em vez de com `--model all`.
+    #
+    # Carrega o que já existe no arquivo (se existir) e indexa
+    # por nome do modelo, para poder mesclar com o resultado
+    # novo sem perder os outros.
+    existing_results = []
+
+    if os.path.exists(path):
+
+        with open(
+            path,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            existing_results = json.load(file)
+
+    combined_by_model = {
+        result["model"]: result
+        for result in existing_results
+    }
+
+    # Resultados desta execução sobrescrevem, por nome de modelo,
+    # qualquer resultado anterior do MESMO modelo (ex.: rodar
+    # `--model resnet` de novo atualiza só a entrada do resnet),
+    # mas preservam os resultados de modelos diferentes que já
+    # estavam salvos.
+    for result in results:
+
+        combined_by_model[result["model"]] = result
+
+    merged_results = list(
+        combined_by_model.values()
+    )
+
     save_json(
-        results,
+        merged_results,
         path
     )
 

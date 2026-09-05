@@ -25,7 +25,8 @@ huggingface/
 datasets/
 
 # RESULTADOS DOS EXPERIMENTOS
-results/
+results/**/*.pth
+!results/
 
 *.pth
 *.pt
